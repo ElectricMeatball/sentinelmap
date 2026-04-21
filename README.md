@@ -28,7 +28,7 @@ A cinematic cybersecurity threat intelligence visualization platform. Displays a
 ### 1. Clone and Install
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/aeroguard-threatmap.git
+git clone https://github.com/kilo-bytez/aeroguard-threatmap.git
 cd aeroguard-threatmap
 npm install
 ```
@@ -58,7 +58,7 @@ The app runs on **port 5000** by default. Override with `PORT=8080 npm start`.
 For a full automated setup on a fresh Ubuntu/Debian server:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/YOUR_USERNAME/aeroguard-threatmap/main/deploy.sh | bash
+curl -fsSL https://raw.githubusercontent.com/kilo-bytez/aeroguard-threatmap/main/deploy.sh | bash
 ```
 
 Or if you've already cloned the repo:
