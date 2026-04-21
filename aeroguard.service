@@ -1,6 +1,6 @@
 [Unit]
 Description=AEROGUARD Threat Map
-Documentation=https://github.com/YOUR_USERNAME/aeroguard-threatmap
+Documentation=https://github.com/kilo-bytez/aeroguard-threatmap
 After=network.target
 
 [Service]
