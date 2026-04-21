@@ -1,0 +1,31 @@
+[Unit]
+Description=AEROGUARD Threat Map
+Documentation=https://github.com/YOUR_USERNAME/aeroguard-threatmap
+After=network.target
+
+[Service]
+Type=simple
+
+# Change 'ubuntu' to your actual Linux username
+User=ubuntu
+
+# Change to the full path where you cloned the repo
+WorkingDirectory=/home/ubuntu/aeroguard-threatmap
+
+# Load environment variables from .env file
+EnvironmentFile=/home/ubuntu/aeroguard-threatmap/.env
+
+# Start the production build
+ExecStart=/usr/bin/node dist/index.cjs
+
+# Auto-restart on crash
+Restart=on-failure
+RestartSec=10
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=aeroguard
+
+[Install]
+WantedBy=multi-user.target
