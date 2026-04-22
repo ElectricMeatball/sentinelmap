@@ -1169,12 +1169,18 @@ export async function registerRoutes(httpServer: any, app: Express): Promise<Ser
         filtered = filtered.filter(e => layers.includes(e.layer));
       }
 
+      // Add display jitter so events stream in gradually on the client
+      const jittered = filtered.map((ev, i) => ({
+        ...ev,
+        displayDelayMs: i < 50 ? i * 120 : 50 * 120 + (i - 50) * 40,
+      }));
+
       res.json({
-        events: filtered,
+        events: jittered,
         feeds: Object.values(feedStatuses),
         lastUpdated: lastFetchTime,
         nextUpdate: lastFetchTime + EVENT_CACHE_TTL,
-        total: filtered.length,
+        total: jittered.length,
       });
     } catch (err) {
       console.error("[SentinelMap] Live threats error:", err);
@@ -1187,6 +1193,52 @@ export async function registerRoutes(httpServer: any, app: Express): Promise<Ser
       });
     }
   });
+  // Live event stream via SSE
+  app.get("/api/threats/sse", async (req, res) => {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.flushHeaders();
+
+    // Send heartbeat every 25s to keep connection alive
+    const heartbeat = setInterval(() => {
+      res.write("event: heartbeat\ndata: {}\n\n");
+    }, 25000);
+
+    // Stream events from pool with random delays
+    let active = true;
+    const streamEvents = async () => {
+      while (active) {
+        try {
+          const events = await buildEvents();
+          if (events.length > 0) {
+            // Pick 1-3 random events from pool
+            const count = 1 + Math.floor(Math.random() * 2);
+            for (let i = 0; i < count; i++) {
+              const ev = events[Math.floor(Math.random() * Math.min(events.length, 80))];
+              // Clone with fresh ID and timestamp so it feels new
+              const fresh = { ...ev, id: ev.id + "-" + Date.now(), streamedAt: Date.now() };
+              res.write(`event: threat\ndata: ${JSON.stringify(fresh)}\n\n`);
+            }
+          }
+        } catch (_err) {
+          // Silently ignore stream errors to keep connection alive
+        }
+        // Wait 3-8 seconds between bursts
+        const delay = 3000 + Math.random() * 5000;
+        await new Promise(r => setTimeout(r, delay));
+      }
+    };
+
+    streamEvents();
+
+    req.on("close", () => {
+      active = false;
+      clearInterval(heartbeat);
+    });
+  });
+
 
   app.get("/api/threats/stats", async (_req, res) => {
     try {
