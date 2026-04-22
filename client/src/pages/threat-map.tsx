@@ -537,7 +537,10 @@ function Sidebar({
                   key={layer}
                   className={`layer-btn ${active ? "active" : ""}`}
                   onClick={() => onToggleLayer(layer)}
-                  style={{ borderColor: active ? `${meta.color}30` : "transparent" }}
+                  style={{
+                    borderColor: active ? `${meta.color}30` : "transparent",
+                    boxShadow: active ? `inset 4px 0 0 ${meta.color}, 0 0 12px ${meta.color}22` : "none",
+                  }}
                 >
                   <div
                     className="layer-dot"
@@ -659,7 +662,7 @@ function TopBar({
       <div style={{ width: "1px", height: "20px", background: "rgba(99,179,237,0.15)" }} />
 
       {/* Search */}
-      <div style={{ position: "relative", flex: 1, maxWidth: "280px" }}>
+      <div style={{ position: "relative", flex: 1, maxWidth: "280px", minWidth: "180px" }}>
         <Search size={12} style={{ position: "absolute", left: "9px", top: "50%", transform: "translateY(-50%)", color: "rgba(226,232,240,0.3)" }} />
         <input
           className="sentinel-search"
@@ -700,7 +703,7 @@ function TopBar({
           }}
         >
           <Globe size={11} />
-          {viewMode === "arcs" ? "HEATMAP" : "ARCS"}
+          {viewMode === "arcs" ? "ARCS" : "HEATMAP"}
         </button>
 
         {/* Refresh */}
@@ -923,9 +926,12 @@ function EventListPanel({ events, activeLayers, onSelect, sidebarWidth }: {
   return (
     <div
       className="sentinel-panel"
-      style={{ right: 0, top: 52, bottom: 36, width: "300px" }}
+      style={{ right: 0, top: 52, bottom: 36, width: "300px", backdropFilter: "blur(8px)" }}
     >
-      <div className="section-header">Recent Events ({filtered.length})</div>
+      <div className="section-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingRight: "14px" }}>
+        <span>Recent Events</span>
+        <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: "11px", color: "rgba(226,232,240,0.5)", fontVariantNumeric: "tabular-nums" }}>{filtered.length}</span>
+      </div>
       {filtered.map(ev => {
         const meta  = LAYER_META[ev.layer];
         const color = meta.color;
