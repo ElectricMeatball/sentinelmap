@@ -1,32 +1,33 @@
-FROM node:20-alpine AS builder
-
+# ─── SentinelMap — Multi-stage Docker build ───────────────────────────────────
+FROM node:20-alpine AS base
 WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --ignore-scripts
 
-COPY package*.json ./
-RUN npm ci
-
+# ── Builder stage ──────────────────────────────────────────────────────────────
+FROM base AS builder
 COPY . .
 RUN npm run build
 
-FROM node:20-alpine AS runner
-
+# ── Production stage ───────────────────────────────────────────────────────────
+FROM node:20-alpine AS production
 WORKDIR /app
 
-RUN addgroup -S aeroguard && adduser -S aeroguard -G aeroguard
+# Only production deps
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts
 
-COPY package*.json ./
-RUN npm ci --omit=dev && npm cache clean --force
-
+# Copy built artifacts
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/shared ./shared
 
-USER aeroguard
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+  CMD wget -qO- http://localhost:3000/api/feeds/status || exit 1
 
 ENV NODE_ENV=production
-ENV PORT=5000
+ENV PORT=3000
 
-EXPOSE 5000
-
-HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-  CMD wget -qO- http://localhost:5000/api/feeds/status || exit 1
+EXPOSE 3000
 
 CMD ["node", "dist/index.cjs"]

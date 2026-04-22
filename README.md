@@ -1,198 +1,171 @@
-# AEROGUARD — THREAT MAP
+# 🛡️ SentinelMap
 
-A cinematic cybersecurity threat intelligence visualization platform. Displays a live global dot-matrix world map with real attack events pulled from 12 free threat intelligence feeds, geolocated attack arcs, MITRE ATT&CK tagging, and a full command-center dashboard.
+**AI-powered cyber threat and APT intelligence platform with real-time OSINT feeds, interactive global map, and analyst dashboard.**
 
-![AEROGUARD Screenshot](https://i.imgur.com/placeholder.png)
+> Built for CTI analysts, SOC teams, and threat hunters who need operational visibility over live cyber threat activity worldwide.
 
-## Features
-
-- **Real threat data** from 12 live feeds: ThreatFox, URLhaus, Feodo Tracker, Blocklist.de, SANS ISC, SSL Blacklist, Cinsscore, IPsum, Emerging Threats, Spamhaus DROP, DataPlane SSH, Turris Greylist
-- **24-hour cache** — feeds refresh once per day; page loads are instant
-- **Animated attack arcs** with particle trails and impact shockwaves
-- **Category filters** — Exploit, Malware, Phishing, DDoS, Ransomware, Brute Force, Botnet, Trojan, Spam
-- **MITRE ATT&CK** technique tagging
-- **Thermal heatmap mode**, zoom/pan, fullscreen, CSV export
-- **Keyboard shortcuts**: `Space` pause/resume · `F` fullscreen · `M` mute · `H` heatmap · `Escape` close drawer
-- CRT scanline overlay, military green aesthetic, rolling counters
+![SentinelMap](https://img.shields.io/badge/status-active-brightgreen) ![License](https://img.shields.io/badge/license-MIT-blue) ![Node](https://img.shields.io/badge/node-20+-green)
 
 ---
 
-## Quick Start (Linux Server)
+## ✨ What it does
 
-### Prerequisites
+- **Interactive global map** (Leaflet, CartoDB Dark tiles) with live attack arcs and animated threat particles
+- **9 threat layers** — each independently toggleable:
+  - 🔴 Malware / Active Infections
+  - 🔺 C2 / Botnet Command & Control
+  - 🟡 Phishing Infrastructure
+  - 🟣 Ransomware Activity
+  - 🔵 Botnet Nodes
+  - ⚡ Brute Force Attacks
+  - 🟢 Exploit / Scanning Activity
+  - ⬛ Spam Sources
+  - 🔴 DDoS Infrastructure
+- **12 live OSINT feeds** — ThreatFox, URLhaus, Feodo Tracker, Blocklist.de, SANS ISC, SSL Blacklist, Cinsscore, IPsum, Emerging Threats, Spamhaus DROP, DataPlane SSH, Turris Greylist
+- **Time range filters** — 1H, 6H, 24H, 7D, 30D
+- **URL state** — shareable links with lat/lon/zoom/layers/timeRange baked in
+- **Event detail panel** — indicator, malware family, MITRE ATT&CK technique, source, confidence, severity, ASN, org, geo confidence
+- **Priority scoring** — composite score from severity, confidence, and source reliability
+- **Live ticker** — real-time event stream at the bottom
+- **Search** — filter by IP, country, malware family, feed, or layer
+- **Normalized schema** — every event has source attribution, ingest timestamp, and relationship type (confirmed / inferred / raw)
 
-- Node.js 18 or higher
-- npm 9 or higher
-- PostgreSQL 14 or higher (optional — app works without it but schema is ready)
+---
 
-### 1. Clone and Install
+## 🚀 Quick start (local)
 
 ```bash
-git clone https://github.com/kilo-bytez/aeroguard-threatmap.git
-cd aeroguard-threatmap
+git clone https://github.com/kilo-bytez/sentinelmap.git
+cd sentinelmap
+cp .env.example .env
 npm install
+npm run dev
 ```
 
-### 2. Configure Environment
+Open [http://localhost:5000](http://localhost:5000)
 
-```bash
-cp .env.example .env
-nano .env
-```
-
-Fill in your values — at minimum set a `SESSION_SECRET`. `DATABASE_URL` is optional; the app uses in-memory storage if not set.
-
-### 3. Build and Run
-
-```bash
-npm run build
-npm start
-```
-
-The app runs on **port 5000** by default. Override with `PORT=8080 npm start`.
+> The first load fetches from all 12 OSINT feeds and geolocates indicators. Expect 15–45 seconds on first run. Subsequent loads use the 3-hour cache.
 
 ---
 
-## One-Command Deploy Script
-
-For a full automated setup on a fresh Ubuntu/Debian server:
+## 🐳 Docker (recommended for VPS)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/kilo-bytez/aeroguard-threatmap/main/deploy.sh | bash
-```
-
-Or if you've already cloned the repo:
-
-```bash
-chmod +x deploy.sh
-./deploy.sh
-```
-
-This script will:
-- Install Node.js 20 via nvm if not present
-- Install all dependencies
-- Build the project
-- Set up a systemd service that starts on boot
-- Start the service
-
----
-
-## Docker (Recommended for Production)
-
-### With Docker Compose (includes PostgreSQL)
-
-```bash
+git clone https://github.com/kilo-bytez/sentinelmap.git
+cd sentinelmap
 cp .env.example .env
-# Edit .env with your values
+# Edit .env — set SESSION_SECRET at minimum
 docker compose up -d
 ```
 
-App available at `http://localhost:5000`
-
-### Standalone Docker
-
-```bash
-docker build -t aeroguard .
-docker run -d \
-  -p 5000:5000 \
-  -e SESSION_SECRET=your_secret_here \
-  --name aeroguard \
-  aeroguard
-```
+The app runs on port **3000** by default.
 
 ---
 
-## Systemd Service (Manual Setup)
-
-To run as a system service that survives reboots:
-
-```bash
-# Copy service file
-sudo cp aeroguard.service /etc/systemd/system/
-
-# Edit paths and user if needed
-sudo nano /etc/systemd/system/aeroguard.service
-
-# Enable and start
-sudo systemctl daemon-reload
-sudo systemctl enable aeroguard
-sudo systemctl start aeroguard
-
-# Check status
-sudo systemctl status aeroguard
-sudo journalctl -u aeroguard -f
-```
-
----
-
-## Reverse Proxy with Nginx
-
-To serve on port 80/443, create `/etc/nginx/sites-available/aeroguard`:
+## 🌐 Nginx reverse proxy (production)
 
 ```nginx
 server {
     listen 80;
-    server_name your-domain.com;
+    server_name yourdomain.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name yourdomain.com;
+
+    ssl_certificate     /etc/letsencrypt/live/yourdomain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/yourdomain.com/privkey.pem;
 
     location / {
-        proxy_pass http://localhost:5000;
+        proxy_pass http://localhost:3000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
         proxy_set_header Host $host;
         proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
 }
 ```
 
-Then: `sudo ln -s /etc/nginx/sites-available/aeroguard /etc/nginx/sites-enabled/ && sudo nginx -t && sudo nginx -s reload`
+---
+
+## 📡 OSINT Sources
+
+| Feed | Layer | Reliability | Update |
+|---|---|---|---|
+| ThreatFox | Malware / C2 | 90% | Daily |
+| URLhaus | Phishing / Malware | 88% | Hourly |
+| Feodo Tracker | C2 / Botnet | 92% | Daily |
+| Blocklist.de | Brute Force | 75% | Daily |
+| SANS ISC | Exploit / Scanning | 85% | Daily |
+| SSL Blacklist | Malware / Botnet | 88% | Daily |
+| Cinsscore | DDoS / Exploit | 70% | Daily |
+| IPsum | Malware / Exploit | 80% | Daily |
+| Emerging Threats | Malware | 82% | Daily |
+| Spamhaus DROP | Spam | 95% | Daily |
+| DataPlane SSH | Brute Force | 85% | Daily |
+| Turris Greylist | Botnet | 78% | Hourly |
+
+> All sources are free and public. No API keys required for the default feed set.
 
 ---
 
-## Environment Variables
+## 🗂️ Folder structure
+
+```
+sentinelmap/
+├── client/src/
+│   ├── pages/
+│   │   └── threat-map.tsx      ← Main map UI (Leaflet + all components)
+│   ├── components/ui/          ← Shadcn/Radix UI primitives
+│   ├── index.css               ← SentinelMap design system
+│   └── App.tsx
+├── server/
+│   ├── routes.ts               ← All API routes + 12 feed fetchers
+│   ├── index.ts                ← Express server entry
+│   └── storage.ts              ← Optional DB storage layer
+├── shared/
+│   └── schema.ts               ← Normalized CyberEvent schema + types
+├── Dockerfile
+├── docker-compose.yml
+└── .env.example
+```
+
+---
+
+## 🔐 Environment variables
+
+See [`.env.example`](.env.example) for full documentation.
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `PORT` | No | `5000` | HTTP port to listen on |
-| `SESSION_SECRET` | Yes | — | Secret for session signing (use a long random string) |
-| `DATABASE_URL` | No | — | PostgreSQL connection URL. App works without it using in-memory storage |
-| `NODE_ENV` | No | `development` | Set to `production` for production builds |
+| `NODE_ENV` | No | `development` | `production` for deployment |
+| `PORT` | No | `3000` | Backend API port |
+| `SESSION_SECRET` | Yes (prod) | `changeme` | Express session secret |
+| `DATABASE_URL` | No | — | PostgreSQL connection string |
+| `FEED_CACHE_TTL_MS` | No | `10800000` | Feed refresh interval (ms) |
 
 ---
 
-## Tech Stack
+## 🛣️ Roadmap
 
-| Layer | Technology |
-|---|---|
-| Frontend | React 18, TypeScript, Vite, Tailwind CSS v4 |
-| Backend | Node.js, Express 5, TypeScript |
-| Routing | Wouter |
-| State | TanStack React Query |
-| Database | PostgreSQL via Drizzle ORM (optional) |
-| Map | Custom SVG dot-matrix canvas renderer |
-| Threat Data | 12 free public threat intelligence feeds |
-
----
-
-## Threat Intelligence Feeds
-
-| Feed | Data Type | URL |
-|---|---|---|
-| ThreatFox | IOCs, malware hashes, C2 IPs | abuse.ch |
-| URLhaus | Malicious URLs | abuse.ch |
-| Feodo Tracker | Botnet C2 IPs | abuse.ch |
-| Blocklist.de | Brute force IPs | blocklist.de |
-| SANS ISC | Attack sources | isc.sans.edu |
-| SSL Blacklist | SSL-abusing IPs | abuse.ch |
-| Cinsscore | Bad actor IPs | cinsscore.com |
-| IPsum | Threat-scored IPs | github.com/stamparm/ipsum |
-| Emerging Threats | Compromised hosts | emergingthreats.net |
-| Spamhaus DROP | Spam/botnet ranges | spamhaus.org |
-| DataPlane SSH | SSH auth-spam IPs | dataplane.org |
-| Turris Greylist | Greylisted IPs | turris.cz |
+- [ ] AlienVault OTX integration
+- [ ] AbuseIPDB enrichment
+- [ ] GreyNoise scanner noise filter
+- [ ] MISP community feeds
+- [ ] CVE / KEV overlay (CISA Known Exploited Vulnerabilities)
+- [ ] APT group tagging and campaign correlation
+- [ ] AI cluster summaries
+- [ ] Analyst watchlists and bookmarks
+- [ ] RBAC / multi-user support
+- [ ] WebSocket live push
 
 ---
 
-## License
+## 📄 License
 
-MIT
+MIT — build with it, fork it, deploy it.
