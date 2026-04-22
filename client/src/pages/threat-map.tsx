@@ -279,9 +279,175 @@ function ArcCanvasBridge({ events, activeLayers }: {
   return <ArcCanvas events={events} map={map} activeLayers={activeLayers} />;
 }
 
+
+// ─── Heatmap Canvas ────────────────────────────────────────────────────────
+function HeatmapCanvasBridge({ events, activeLayers }: { events: CyberEvent[]; activeLayers: Set<LayerType> }) {
+  const map = useMap();
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const animRef = useRef<number>(0);
+  const frameRef = useRef(0);
+
+  const visible = useMemo(
+    () => events.filter(e => activeLayers.has(e.layer)),
+    [events, activeLayers]
+  );
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const resize = () => {
+      const c = map.getContainer();
+      canvas.width = c.offsetWidth;
+      canvas.height = c.offsetHeight;
+    };
+    resize();
+    map.on("resize move moveend zoomend", resize);
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    function draw() {
+      if (!ctx || !canvas) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      frameRef.current++;
+      const f = frameRef.current;
+
+      // Build density grid
+      const CELL = 40;
+      const cols = Math.ceil(canvas.width / CELL);
+      const grid: Record<string, { x: number; y: number; count: number; maxPriority: number; color: string }> = {};
+
+      for (const ev of visible) {
+        const pt = map.latLngToContainerPoint([ev.srcLat, ev.srcLon]);
+        const cx = Math.floor(pt.x / CELL);
+        const cy = Math.floor(pt.y / CELL);
+        const key = `${cx},${cy}`;
+        if (!grid[key]) grid[key] = { x: (cx + 0.5) * CELL, y: (cy + 0.5) * CELL, count: 0, maxPriority: 0, color: LAYER_META[ev.layer].color };
+        grid[key].count++;
+        if (ev.priorityScore > grid[key].maxPriority) {
+          grid[key].maxPriority = ev.priorityScore;
+          grid[key].color = LAYER_META[ev.layer].color;
+        }
+      }
+
+      const maxCount = Math.max(1, ...Object.values(grid).map(g => g.count));
+
+      for (const cell of Object.values(grid)) {
+        const intensity = cell.count / maxCount;
+        const radius = CELL * (0.8 + intensity * 1.8);
+        const alpha = 0.15 + intensity * 0.45;
+
+        const grad = ctx.createRadialGradient(cell.x, cell.y, 0, cell.x, cell.y, radius);
+        const [r, g2, b] = hexToRgbArr(cell.color);
+        grad.addColorStop(0, `rgba(${r},${g2},${b},${alpha})`);
+        grad.addColorStop(0.4, `rgba(${r},${g2},${b},${alpha * 0.5})`);
+        grad.addColorStop(1, `rgba(${r},${g2},${b},0)`);
+
+        ctx.beginPath();
+        ctx.arc(cell.x, cell.y, radius, 0, Math.PI * 2);
+        ctx.fillStyle = grad;
+        ctx.fill();
+
+        // Animated pulsing rings for hot cells
+        if (cell.maxPriority >= 80) {
+          const phase = (f / 60 + cell.x * 0.01) % 1;
+          const pulseR = radius * (0.5 + phase * 1.5);
+          const pulseAlpha = (1 - phase) * 0.4;
+          ctx.beginPath();
+          ctx.arc(cell.x, cell.y, pulseR, 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(${r},${g2},${b},${pulseAlpha})`;
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        }
+      }
+
+      animRef.current = requestAnimationFrame(draw);
+    }
+
+    animRef.current = requestAnimationFrame(draw);
+    return () => {
+      cancelAnimationFrame(animRef.current);
+      map.off("resize move moveend zoomend", resize);
+    };
+  }, [visible, map]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", pointerEvents: "none", zIndex: 450 }}
+    />
+  );
+}
+
+function hexToRgbArr(hex: string): [number, number, number] {
+  return [
+    parseInt(hex.slice(1, 3), 16),
+    parseInt(hex.slice(3, 5), 16),
+    parseInt(hex.slice(5, 7), 16),
+  ];
+}
+
+// ─── Choropleth country risk layer ────────────────────────────────────────
+function ChoroplethLayer({ visible }: { visible: boolean }) {
+  const map = useMap();
+  const layerRef = useRef<L.LayerGroup | null>(null);
+
+  const { data } = useQuery({
+    queryKey: ["country-stats"],
+    queryFn: async () => {
+      const r = await fetch("/api/threats/country-stats");
+      return r.json() as Promise<{ countries: { country: string; count: number; lat: number; lon: number }[]; total: number }>;
+    },
+    refetchInterval: 10 * 60 * 1000,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  useEffect(() => {
+    if (!visible) {
+      if (layerRef.current) { layerRef.current.clearLayers(); }
+      return;
+    }
+    if (!data?.countries?.length) return;
+
+    if (!layerRef.current) layerRef.current = L.layerGroup().addTo(map);
+    else layerRef.current.clearLayers();
+
+    const maxCount = Math.max(1, ...data.countries.map(c => c.count));
+
+    for (const c of data.countries) {
+      if (c.country === "Unknown" || !c.lat) continue;
+      const intensity = c.count / maxCount;
+      const radius = 8 + intensity * 40;
+      const r = Math.round(255 * Math.min(1, intensity * 2));
+      const g2 = Math.round(255 * Math.max(0, 1 - intensity * 1.5));
+      const color = `rgb(${r},${g2},30)`;
+
+      L.circleMarker([c.lat, c.lon], {
+        radius,
+        fillColor: color,
+        color: color,
+        fillOpacity: 0.18 + intensity * 0.25,
+        opacity: 0.5,
+        weight: 1,
+      })
+        .bindTooltip(`<div style="font-family:'JetBrains Mono',monospace;font-size:11px;background:#0a1120;border:1px solid rgba(99,179,237,0.2);color:#e2e8f0;padding:6px 10px;border-radius:4px">
+          <b>${c.country}</b><br/>Events: ${c.count}
+        </div>`, { opacity: 1, className: "sentinel-tooltip" })
+        .addTo(layerRef.current!);
+    }
+
+    return () => {
+      if (layerRef.current) layerRef.current.clearLayers();
+    };
+  }, [data, visible, map]);
+
+  return null;
+}
+
 // ─── Sidebar ──────────────────────────────────────────────────────────────
 function Sidebar({
   activeLayers, onToggleLayer, layerCounts, feeds, collapsed, onToggleCollapse,
+  showChoropleth, onToggleChoropleth,
 }: {
   activeLayers: Set<LayerType>;
   onToggleLayer: (l: LayerType) => void;
@@ -289,6 +455,8 @@ function Sidebar({
   feeds: FeedStatus[];
   collapsed: boolean;
   onToggleCollapse: () => void;
+  showChoropleth: boolean;
+  onToggleChoropleth: () => void;
 }) {
   const liveFeedCount = feeds.filter(f => f.status === "live").length;
 
@@ -397,6 +565,32 @@ function Sidebar({
             })}
           </div>
 
+          {/* Choropleth toggle */}
+          <div style={{ padding: "8px 14px 4px" }}>
+            <button
+              onClick={onToggleChoropleth}
+              style={{
+                width: "100%", display: "flex", alignItems: "center", gap: "8px",
+                background: showChoropleth ? "rgba(16,185,129,0.08)" : "transparent",
+                border: `1px solid ${showChoropleth ? "rgba(16,185,129,0.3)" : "rgba(99,179,237,0.12)"}`,
+                borderRadius: "6px", padding: "7px 10px", cursor: "pointer",
+                transition: "all 0.15s ease",
+              }}
+            >
+              <Globe size={12} color={showChoropleth ? "#10b981" : "rgba(226,232,240,0.35)"} />
+              <span style={{
+                fontFamily: "'Rajdhani',sans-serif", fontSize: "11px", fontWeight: 700,
+                letterSpacing: "0.06em", textTransform: "uppercase",
+                color: showChoropleth ? "#10b981" : "rgba(226,232,240,0.45)",
+              }}>Country Risk Map</span>
+              <div style={{
+                marginLeft: "auto", width: "6px", height: "6px", borderRadius: "50%",
+                background: showChoropleth ? "#10b981" : "rgba(226,232,240,0.15)",
+                boxShadow: showChoropleth ? "0 0 6px #10b981" : "none",
+              }} />
+            </button>
+          </div>
+
           {/* Feed status */}
           <div style={{ borderTop: "1px solid rgba(99,179,237,0.12)", padding: "0" }}>
             <div className="section-header">Data Sources</div>
@@ -419,13 +613,15 @@ function Sidebar({
 // ─── Top bar ──────────────────────────────────────────────────────────────
 function TopBar({
   lat, lon, zoom, timeRange, onTimeRange, search, onSearch, totalEvents, sidebarWidth,
-  onRefresh, isLoading,
+  onRefresh, isLoading, viewMode, onToggleView,
 }: {
   lat: number; lon: number; zoom: number;
   timeRange: TimeRange; onTimeRange: (t: TimeRange) => void;
   search: string; onSearch: (s: string) => void;
   totalEvents: number; sidebarWidth: number;
   onRefresh: () => void; isLoading: boolean;
+  viewMode: "arcs" | "heatmap";
+  onToggleView: () => void;
 }) {
   const fmtCoord = (v: number, dirs: [string, string]) => {
     const abs = Math.abs(v).toFixed(4);
@@ -487,6 +683,25 @@ function TopBar({
             {totalEvents.toLocaleString()} events
           </span>
         </div>
+
+        {/* View mode toggle: Arcs / Heatmap */}
+        <button
+          onClick={onToggleView}
+          title={viewMode === "arcs" ? "Switch to Heatmap" : "Switch to Arc View"}
+          style={{
+            background: viewMode === "heatmap" ? "rgba(99,179,237,0.15)" : "transparent",
+            border: `1px solid ${viewMode === "heatmap" ? "rgba(99,179,237,0.5)" : "rgba(99,179,237,0.2)"}`,
+            borderRadius: "5px", padding: "5px 10px", cursor: "pointer",
+            color: viewMode === "heatmap" ? "#63b3ed" : "rgba(226,232,240,0.5)",
+            display: "flex", alignItems: "center", gap: "5px",
+            fontFamily: "'Rajdhani',sans-serif", fontSize: "11px", fontWeight: 700,
+            letterSpacing: "0.06em", textTransform: "uppercase",
+            transition: "all 0.15s ease",
+          }}
+        >
+          <Globe size={11} />
+          {viewMode === "arcs" ? "HEATMAP" : "ARCS"}
+        </button>
 
         {/* Refresh */}
         <button
@@ -827,6 +1042,8 @@ export default function ThreatMap() {
   const [selectedEvent, setSelectedEvent] = useState<CyberEvent | null>(null);
   const [search, setSearch]               = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [viewMode, setViewMode]            = useState<"arcs"|"heatmap">("arcs");
+  const [showChoropleth, setShowChoropleth] = useState(false);
   const mapRef = useRef<L.Map | null>(null);
 
   const sidebarWidth = sidebarCollapsed ? 48 : 260;
@@ -954,11 +1171,15 @@ export default function ThreatMap() {
           onViewChange={handleViewChange}
         />
 
-        {/* Attack arc canvas */}
-        <ArcCanvasBridge
-          events={filteredEvents}
-          activeLayers={viewState.layers}
-        />
+        {/* Attack arcs or heatmap canvas */}
+        {viewMode === "arcs" ? (
+          <ArcCanvasBridge events={filteredEvents} activeLayers={viewState.layers} />
+        ) : (
+          <HeatmapCanvasBridge events={filteredEvents} activeLayers={viewState.layers} />
+        )}
+
+        {/* Country risk choropleth */}
+        <ChoroplethLayer visible={showChoropleth} />
 
         {/* Event markers */}
         <MapMarkers
@@ -977,6 +1198,8 @@ export default function ThreatMap() {
         feeds={feeds}
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed(p => !p)}
+        showChoropleth={showChoropleth}
+        onToggleChoropleth={() => setShowChoropleth(p => !p)}
       />
 
       {/* Top bar */}
@@ -992,6 +1215,8 @@ export default function ThreatMap() {
         sidebarWidth={sidebarWidth}
         onRefresh={() => refetch()}
         isLoading={isLoading}
+        viewMode={viewMode}
+        onToggleView={() => setViewMode(p => p === "arcs" ? "heatmap" : "arcs")}
       />
 
       {/* Right panel — detail or list */}

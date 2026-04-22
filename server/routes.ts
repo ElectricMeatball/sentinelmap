@@ -110,6 +110,9 @@ const feedStatuses: Record<string, FeedStatus> = {
   spamhaus:        { id: "spamhaus",        name: "Spamhaus DROP",          url: "https://www.spamhaus.org",               status: "loading", lastUpdated: null, count: 0, layer: "spam",       reliability: 95 },
   dataplane:       { id: "dataplane",       name: "DataPlane SSH",          url: "https://dataplane.org",                  status: "loading", lastUpdated: null, count: 0, layer: "bruteforce", reliability: 85 },
   turris:          { id: "turris",          name: "Turris Greylist",        url: "https://view.sentinel.turris.cz",        status: "loading", lastUpdated: null, count: 0, layer: "botnet",     reliability: 78 },
+  cisa_kev:        { id: "cisa_kev",        name: "CISA KEV",               url: "https://www.cisa.gov/known-exploited-vulnerabilities-catalog", status: "loading", lastUpdated: null, count: 0, layer: "exploit",    reliability: 98 },
+  ransomware_live: { id: "ransomware_live", name: "Ransomware.live",        url: "https://ransomware.live",               status: "loading", lastUpdated: null, count: 0, layer: "ransomware", reliability: 88 },
+  otx:             { id: "otx",             name: "AlienVault OTX",         url: "https://otx.alienvault.com",             status: "loading", lastUpdated: null, count: 0, layer: "malware",    reliability: 85 },
 };
 
 // ─── Per-feed cache ────────────────────────────────────────────────────────
@@ -822,6 +825,111 @@ async function buildEvents(): Promise<CyberEvent[]> {
     });
   }
 
+  // ── CISA KEV (actively exploited CVEs) ──
+  const kevData = await fetchCISAKEV();
+  const US_TARGETS = KNOWN_TARGETS.filter(t => t.country === "United States");
+  for (const vuln of kevData.slice(0, 20)) {
+    const target = US_TARGETS[Math.floor(Math.random() * US_TARGETS.length)] || pickTarget();
+    const srcOrigin = KNOWN_TARGETS[Math.floor(Math.random() * KNOWN_TARGETS.length)];
+    const confidence = 98;
+    const severity: 1|2|3|4|5 = 5;
+    events.push({
+      id: mkId("kev"),
+      layer: "exploit" as LayerType,
+      indicatorType: "unknown",
+      indicator: vuln.cveID || vuln.cve || "CVE-Unknown",
+      malwareFamily: vuln.vulnerabilityName || vuln.product || "",
+      cve: vuln.cveID || "",
+      attackTechnique: "T1190",
+      attackTacticName: "Initial Access",
+      actor: vuln.vendorProject || "",
+      source: "CISA KEV",
+      sourceUrl: "https://www.cisa.gov/known-exploited-vulnerabilities-catalog",
+      sourceReliability: 98,
+      observedAt: new Date(vuln.dateAdded || now).getTime(),
+      ingestedAt: now,
+      confidence,
+      severity,
+      priorityScore: 95,
+      srcLat: srcOrigin.lat, srcLon: srcOrigin.lon, srcCountry: srcOrigin.country,
+      dstLat: target.lat, dstLon: target.lon, dstCountry: target.country,
+      geoConfidence: "low",
+      targetSector: vuln.requiredAction || "",
+      relationshipType: "confirmed",
+      rawData: { cisa_kev: vuln },
+    });
+  }
+
+  // ── Ransomware.live (recent victims) ──
+  const rlData = await fetchRansomwareLive();
+  for (const victim of rlData.slice(0, 25)) {
+    const victimCountry = victim.country || victim.victim_country || "";
+    const victimCoords = COUNTRY_COORDS[victimCountry] || COUNTRY_COORDS["United States"];
+    const actorOrigin = RANSOMWARE_ACTOR_ORIGINS[Math.floor(Math.random() * RANSOMWARE_ACTOR_ORIGINS.length)];
+    const confidence = 85;
+    const severity: 1|2|3|4|5 = 5;
+    events.push({
+      id: mkId("rl"),
+      layer: "ransomware" as LayerType,
+      indicatorType: "unknown",
+      indicator: victim.post_title || victim.victim || victim.victim_name || "Unknown Victim",
+      malwareFamily: victim.group_name || victim.threat_actor || "Ransomware",
+      actor: victim.group_name || "",
+      campaign: victim.group_name || "",
+      attackTechnique: "T1486",
+      attackTacticName: "Impact",
+      source: "Ransomware.live",
+      sourceUrl: "https://ransomware.live",
+      sourceReliability: 88,
+      observedAt: new Date(victim.discovered || victim.date || now).getTime(),
+      ingestedAt: now,
+      confidence,
+      severity,
+      priorityScore: 90,
+      srcLat: actorOrigin.lat, srcLon: actorOrigin.lon, srcCountry: "Unknown",
+      dstLat: victimCoords.lat, dstLon: victimCoords.lon, dstCountry: victimCountry || "Unknown",
+      geoConfidence: "medium",
+      targetSector: victim.sector || "",
+      relationshipType: "confirmed",
+      rawData: { ransomware_live: victim },
+    });
+  }
+
+  // ── AlienVault OTX (key-optional) ──
+  const otxData = await fetchOTX();
+  const otxIPs = otxData.map((e: any) => e.ip).filter(Boolean) as string[];
+  await geolocateBatch(otxIPs, 15);
+  for (const ind of otxData.slice(0, 20)) {
+    const geo = geoCache.get(ind.ip);
+    if (!geo) continue;
+    const target = pickTarget();
+    const confidence = 80;
+    const severity = calcSeverity(confidence, "malware");
+    events.push({
+      id: mkId("otx"),
+      layer: "malware" as LayerType,
+      indicatorType: "ip",
+      indicator: ind.ip,
+      malwareFamily: ind.malware_family || ind.pulse_name || "OTX Indicator",
+      actor: ind.actor || "",
+      attackTechnique: "T1059",
+      source: "AlienVault OTX",
+      sourceUrl: "https://otx.alienvault.com",
+      sourceReliability: 85,
+      observedAt: now,
+      ingestedAt: now,
+      confidence,
+      severity,
+      priorityScore: calcPriority(severity, confidence, 85),
+      srcLat: geo.lat, srcLon: geo.lon, srcCountry: geo.country, srcCity: geo.city,
+      srcOrg: geo.org, srcAsn: geo.asn,
+      dstLat: target.lat, dstLon: target.lon, dstCountry: target.country,
+      geoConfidence: "high",
+      relationshipType: "confirmed",
+      rawData: { otx: ind },
+    });
+  }
+
   // Sort by priority descending
   events.sort((a, b) => b.priorityScore - a.priorityScore);
 
@@ -848,6 +956,131 @@ function filterByTimeRange(events: CyberEvent[], range: TimeRange): CyberEvent[]
   const cutoff = events.length * ratio;
   return events.slice(0, Math.ceil(cutoff));
 }
+
+// ─── Country lat/lon lookup (for ransomware victim mapping) ─────────────────
+const COUNTRY_COORDS: Record<string, { lat: number; lon: number }> = {
+  "United States": { lat: 39.8, lon: -98.6 }, "United Kingdom": { lat: 54.7, lon: -2.4 },
+  "Germany": { lat: 51.1, lon: 10.4 }, "France": { lat: 46.2, lon: 2.2 },
+  "Japan": { lat: 36.2, lon: 138.3 }, "Canada": { lat: 56.1, lon: -106.3 },
+  "Australia": { lat: -25.3, lon: 133.8 }, "Italy": { lat: 41.9, lon: 12.6 },
+  "Spain": { lat: 40.4, lon: -3.7 }, "Netherlands": { lat: 52.1, lon: 5.3 },
+  "Brazil": { lat: -10.3, lon: -53.2 }, "India": { lat: 20.6, lon: 78.9 },
+  "China": { lat: 35.9, lon: 104.2 }, "Russia": { lat: 61.5, lon: 105.3 },
+  "South Korea": { lat: 36.5, lon: 127.9 }, "Mexico": { lat: 23.6, lon: -102.5 },
+  "Switzerland": { lat: 46.8, lon: 8.2 }, "Sweden": { lat: 60.1, lon: 18.6 },
+  "Belgium": { lat: 50.5, lon: 4.5 }, "Poland": { lat: 51.9, lon: 19.1 },
+  "Singapore": { lat: 1.35, lon: 103.8 }, "UAE": { lat: 24.2, lon: 54.4 },
+  "South Africa": { lat: -30.6, lon: 22.9 }, "Ukraine": { lat: 49.0, lon: 31.3 },
+  "Argentina": { lat: -38.4, lon: -63.6 }, "Turkey": { lat: 39.1, lon: 35.2 },
+  "Israel": { lat: 31.5, lon: 34.8 }, "Taiwan": { lat: 23.7, lon: 121.0 },
+  "Indonesia": { lat: -0.8, lon: 113.9 }, "Thailand": { lat: 15.9, lon: 101.0 },
+};
+
+const RANSOMWARE_ACTOR_ORIGINS = [
+  { lat: 55.7, lon: 37.6 },  // Russia (Moscow)
+  { lat: 30.0, lon: 31.2 },  // Egypt
+  { lat: 39.9, lon: 116.4 }, // China (Beijing)
+  { lat: 37.5, lon: 127.0 }, // South Korea
+  { lat: 51.5, lon: -0.1 },  // UK (used by some groups)
+];
+
+// ─── CISA KEV Feed ────────────────────────────────────────────────────────────
+let kevCache: any[] = [];
+let kevLastFetch = 0;
+
+async function fetchCISAKEV() {
+  if (Date.now() - kevLastFetch < CACHE_TTL && kevCache.length > 0) return kevCache;
+  try {
+    const r = await fetchWithTimeout("https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json", {}, 15000);
+    const d = await r.json() as any;
+    const vulns = Array.isArray(d.vulnerabilities) ? d.vulnerabilities : [];
+    // Sort by dateAdded descending, take most recent 60
+    const sorted = vulns.sort((a: any, b: any) =>
+      new Date(b.dateAdded || 0).getTime() - new Date(a.dateAdded || 0).getTime()
+    ).slice(0, 60);
+    if (sorted.length > 0) {
+      kevCache = sorted;
+      kevLastFetch = Date.now();
+      feedStatuses.cisa_kev.status = "live";
+      feedStatuses.cisa_kev.lastUpdated = Date.now();
+      feedStatuses.cisa_kev.count = sorted.length;
+    }
+    return kevCache;
+  } catch { feedStatuses.cisa_kev.status = "offline"; }
+  return [];
+}
+
+// ─── Ransomware.live Feed ─────────────────────────────────────────────────────
+let ransomwareLiveCache: any[] = [];
+let ransomwareLiveLastFetch = 0;
+
+async function fetchRansomwareLive() {
+  if (Date.now() - ransomwareLiveLastFetch < CACHE_TTL && ransomwareLiveCache.length > 0) return ransomwareLiveCache;
+  try {
+    const r = await fetchWithTimeout("https://api.ransomware.live/recentvictims", {
+      headers: { "User-Agent": "SentinelMap/1.0" },
+    }, 12000);
+    const d = await r.json() as any[];
+    if (Array.isArray(d) && d.length > 0) {
+      const data = d.slice(0, 50);
+      ransomwareLiveCache = data;
+      ransomwareLiveLastFetch = Date.now();
+      feedStatuses.ransomware_live.status = "live";
+      feedStatuses.ransomware_live.lastUpdated = Date.now();
+      feedStatuses.ransomware_live.count = data.length;
+      return data;
+    }
+  } catch { feedStatuses.ransomware_live.status = "offline"; }
+  return [];
+}
+
+// ─── AlienVault OTX Feed (key-optional) ──────────────────────────────────────
+let otxCache: any[] = [];
+let otxLastFetch = 0;
+
+async function fetchOTX() {
+  const apiKey = process.env.OTX_API_KEY;
+  if (!apiKey) {
+    feedStatuses.otx.status = "offline";
+    feedStatuses.otx.count = 0;
+    return [];
+  }
+  if (Date.now() - otxLastFetch < CACHE_TTL && otxCache.length > 0) return otxCache;
+  try {
+    const r = await fetchWithTimeout("https://otx.alienvault.com/api/v1/pulses/subscribed?limit=20", {
+      headers: { "X-OTX-API-KEY": apiKey },
+    }, 15000);
+    const d = await r.json() as any;
+    const results = d.results || [];
+    const indicators: any[] = [];
+    for (const pulse of results.slice(0, 10)) {
+      const tags = pulse.tags || [];
+      const actor = pulse.author_name || "";
+      for (const ind of (pulse.indicators || []).slice(0, 8)) {
+        if (ind.type === "IPv4" && ind.indicator) {
+          indicators.push({
+            ip: ind.indicator,
+            pulse_name: pulse.name,
+            malware_family: (pulse.malware_families || []).map((m: any) => m.display_name).join(", ") || "",
+            actor,
+            tags,
+          });
+        }
+      }
+      if (indicators.length >= 30) break;
+    }
+    if (indicators.length > 0) {
+      otxCache = indicators;
+      otxLastFetch = Date.now();
+      feedStatuses.otx.status = "live";
+      feedStatuses.otx.lastUpdated = Date.now();
+      feedStatuses.otx.count = indicators.length;
+    }
+    return otxCache;
+  } catch { feedStatuses.otx.status = "offline"; }
+  return [];
+}
+
 
 // ─── Routes ───────────────────────────────────────────────────────────────
 export async function registerRoutes(httpServer: any, app: Express): Promise<Server> {
@@ -903,6 +1136,27 @@ export async function registerRoutes(httpServer: any, app: Express): Promise<Ser
       res.json({ total: events.length, byLayer, topCountries });
     } catch (err) {
       res.status(500).json({ error: "Stats error" });
+    }
+  });
+
+  app.get("/api/threats/country-stats", async (_req, res) => {
+    try {
+      const events = await buildEvents();
+      const countryMap: Record<string, { count: number; lat: number; lon: number }> = {};
+      for (const e of events) {
+        const c = e.srcCountry || "Unknown";
+        if (!countryMap[c]) {
+          const coords = COUNTRY_COORDS[c] || { lat: e.srcLat, lon: e.srcLon };
+          countryMap[c] = { count: 0, lat: coords.lat, lon: coords.lon };
+        }
+        countryMap[c].count++;
+      }
+      const result = Object.entries(countryMap)
+        .sort((a, b) => b[1].count - a[1].count)
+        .map(([country, { count, lat, lon }]) => ({ country, count, lat, lon }));
+      res.json({ countries: result, total: events.length });
+    } catch (err) {
+      res.status(500).json({ error: "Country stats error" });
     }
   });
 
