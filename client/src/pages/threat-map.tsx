@@ -1185,6 +1185,25 @@ function ZoomControls({ sidebarWidth, onZoom }: { sidebarWidth: number; onZoom: 
   );
 }
 
+// ─── Threat Level Bar ──────────────────────────────────────────────────────
+function ThreatLevelBar({ events }: { events: CyberEvent[] }) {
+  const highSev = events.filter(e => e.severity >= 4).length;
+  const ratio = Math.min(highSev / Math.max(events.length * 0.25, 1), 1);
+  const activeSegs = Math.round(ratio * 7);
+  const label = activeSegs >= 6 ? 'CRITICAL' : activeSegs >= 4 ? 'ELEVATED' : activeSegs >= 2 ? 'GUARDED' : 'LOW';
+  return (
+    <div className="threat-level-bar">
+      <div className="threat-level-label">Threat Level — {label}</div>
+      <div className="threat-level-segments">
+        {[1,2,3,4,5,6,7].map(i => (
+          <div key={i} className={`threat-level-seg seg-${i}${i <= activeSegs ? ' on' : ''}`} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+
 // ─── Main Component ────────────────────────────────────────────────────────
 export default function ThreatMap() {
   const [viewState, setViewState] = useState<ViewState>(parseURLState);
@@ -1442,6 +1461,21 @@ export default function ThreatMap() {
 
       {/* Zoom controls */}
       <ZoomControls sidebarWidth={sidebarWidth} onZoom={handleZoom} />
+
+      {/* Map vignette depth effect */}
+      <div className="map-vignette" />
+
+      {/* HUD corner brackets */}
+      <div className="hud-corner tl" />
+      <div className="hud-corner tr" />
+      <div className="hud-corner bl" />
+      <div className="hud-corner br" />
+
+      {/* Threat level indicator */}
+      {filteredEvents.length > 0 && (
+        <ThreatLevelBar events={filteredEvents} />
+      )}
+
 
       {/* Loading overlay */}
       {isLoading && allEvents.length === 0 && (
