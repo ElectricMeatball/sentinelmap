@@ -40,7 +40,7 @@ html, body, #root {
 
 /* Leaflet map overrides */
 .leaflet-container {
-  background: #060b14 !important;
+  background: #1a1a1a !important;
   font-family: 'Inter', sans-serif;
   height: 100% !important;
   width: 100% !important;
@@ -51,18 +51,17 @@ html, body, #root {
 }
 
 .leaflet-control-attribution {
-  background: rgba(6, 11, 20, 0.75) !important;
-  color: rgba(226,232,240,0.2) !important;
+  background: rgba(10,17,32,0.7) !important;
+  color: rgba(226,232,240,0.25) !important;
   font-size: 9px !important;
-  font-family: 'Inter', sans-serif !important;
-  border: none !important;
-  border-radius: 4px 0 0 0 !important;
+  border-top-left-radius: 4px !important;
   padding: 2px 6px !important;
-  letter-spacing: 0.02em !important;
+  font-family: 'Inter', sans-serif !important;
 }
 
+
 .leaflet-control-attribution a {
-  color: rgba(56,189,248,0.4) !important;
+  color: rgba(99,179,237,0.4) !important;
 }
 
 /* Custom marker styles */

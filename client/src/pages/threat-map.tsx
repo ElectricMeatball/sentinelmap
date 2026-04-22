@@ -1158,17 +1158,25 @@ export default function ThreatMap() {
       <MapContainer
         center={[viewState.lat, viewState.lon]}
         zoom={viewState.zoom}
-        style={{ width: "100%", height: "100%", background: "#060b14" }}
+        minZoom={2}
+        maxZoom={16}
+        style={{ width: "100%", height: "100%", background: "#1a1a1a" }}
         zoomControl={false}
         attributionControl={true}
         ref={(m: any) => { if (m) mapRef.current = m; }}
       >
-        {/* CartoDB Dark Matter tiles — free, no API key */}
+        {/* ESRI Dark Gray Base — English labels, Palantir aesthetic, free, no API key */}
         <TileLayer
-          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'
-          maxZoom={19}
-          subdomains="abcd"
+          url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+          attribution="Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ"
+          maxZoom={16}
+        />
+        {/* ESRI Dark Gray Reference — English-only text labels on transparent background */}
+        <TileLayer
+          url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}"
+          attribution=""
+          maxZoom={16}
+          pane="shadowPane"
         />
 
         {/* Map event sync */}
