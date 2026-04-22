@@ -48,6 +48,18 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, ms = 10000): P
   return fetch(url, { ...options, signal: ctrl.signal }).finally(() => clearTimeout(t));
 }
 
+async function fetchWithRetry(url: string, options: RequestInit = {}, ms = 10000, retries = 2): Promise<Response> {
+  for (let i = 0; i <= retries; i++) {
+    try {
+      return await fetchWithTimeout(url, options, ms);
+    } catch (e) {
+      if (i === retries) throw e;
+      await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+    }
+  }
+  throw new Error('Max retries reached');
+}
+
 async function geolocateBatch(ips: string[], max = 20) {
   const toResolve = ips.filter(ip => !geoCache.has(ip)).slice(0, max);
   await Promise.all(
@@ -113,6 +125,7 @@ const feedStatuses: Record<string, FeedStatus> = {
   cisa_kev:        { id: "cisa_kev",        name: "CISA KEV",               url: "https://www.cisa.gov/known-exploited-vulnerabilities-catalog", status: "loading", lastUpdated: null, count: 0, layer: "exploit",    reliability: 98 },
   ransomware_live: { id: "ransomware_live", name: "Ransomware.live",        url: "https://ransomware.live",               status: "loading", lastUpdated: null, count: 0, layer: "ransomware", reliability: 88 },
   otx:             { id: "otx",             name: "AlienVault OTX",         url: "https://otx.alienvault.com",             status: "loading", lastUpdated: null, count: 0, layer: "malware",    reliability: 85 },
+  malwarebazaar:   { id: "malwarebazaar",   name: "MalwareBazaar",           url: "https://bazaar.abuse.ch",               status: "loading", lastUpdated: null, count: 0, layer: "malware",    reliability: 90 },
 };
 
 // ─── Per-feed cache ────────────────────────────────────────────────────────
@@ -134,7 +147,7 @@ async function fetchURLhaus() {
   const hit = cached<any>("urlhaus");
   if (hit) return hit;
   try {
-    const r = await fetchWithTimeout("https://urlhaus-api.abuse.ch/v1/urls/recent/", {
+    const r = await fetchWithRetry("https://urlhaus-api.abuse.ch/v1/urls/recent/", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: "limit=100",
@@ -156,7 +169,7 @@ async function fetchFeodo() {
   const hit = cached<any>("feodo");
   if (hit) return hit;
   try {
-    const r = await fetchWithTimeout("https://feodotracker.abuse.ch/downloads/ipblocklist_recommended.json");
+    const r = await fetchWithRetry("https://feodotracker.abuse.ch/downloads/ipblocklist_recommended.json");
     const d = await r.json() as any[];
     if (Array.isArray(d) && d.length) {
       const data = d.slice(0, 60);
@@ -212,7 +225,7 @@ async function fetchSSLBL() {
   const hit = cached<any>("sslbl");
   if (hit) return hit;
   try {
-    const r = await fetchWithTimeout("https://sslbl.abuse.ch/blacklist/sslipblacklist.json");
+    const r = await fetchWithRetry("https://sslbl.abuse.ch/blacklist/sslipblacklist.json");
     const d = await r.json() as any;
     const arr = Array.isArray(d) ? d : (d.blacklist || []);
     if (arr.length) {
@@ -385,6 +398,7 @@ async function buildEvents(): Promise<CyberEvent[]> {
     spamhausIPs,
     dataplaneIPs,
     turrisData,
+    mbData,
   ] = await Promise.all([
     fetchWithTimeout("https://threatfox-api.abuse.ch/api/v1/", {
       method: "POST",
@@ -402,6 +416,7 @@ async function buildEvents(): Promise<CyberEvent[]> {
     fetchSpamhaus(),
     fetchDataPlane(),
     fetchTurris(),
+    fetchMalwareBazaar(),
   ]);
 
   const events: CyberEvent[] = [];
@@ -930,6 +945,35 @@ async function buildEvents(): Promise<CyberEvent[]> {
     });
   }
 
+  // ── MalwareBazaar ──
+  for (const sample of (mbData as any[]).slice(0, 15)) {
+    const target = pickTarget();
+    const srcOrigin = KNOWN_TARGETS[Math.floor(Math.random() * KNOWN_TARGETS.length)];
+    const confidence = 88;
+    const severity = calcSeverity(confidence, "malware");
+    events.push({
+      id: mkId("mb"),
+      layer: "malware" as LayerType,
+      indicatorType: "unknown",
+      indicator: sample.sha256_hash || sample.file_name || "Unknown Sample",
+      malwareFamily: sample.signature || (sample.tags?.join(", ")) || "Malware Sample",
+      attackTechnique: "T1204",
+      source: "MalwareBazaar",
+      sourceUrl: "https://bazaar.abuse.ch",
+      sourceReliability: 90,
+      observedAt: new Date(sample.first_seen || Date.now()).getTime(),
+      ingestedAt: now,
+      confidence,
+      severity,
+      priorityScore: calcPriority(severity, confidence, 90),
+      srcLat: srcOrigin.lat, srcLon: srcOrigin.lon, srcCountry: srcOrigin.country,
+      dstLat: target.lat, dstLon: target.lon, dstCountry: target.country,
+      geoConfidence: "low",
+      relationshipType: "confirmed",
+      rawData: { malwarebazaar: sample },
+    });
+  }
+
   // Sort by priority descending
   events.sort((a, b) => b.priorityScore - a.priorityScore);
 
@@ -991,7 +1035,7 @@ let kevLastFetch = 0;
 async function fetchCISAKEV() {
   if (Date.now() - kevLastFetch < CACHE_TTL && kevCache.length > 0) return kevCache;
   try {
-    const r = await fetchWithTimeout("https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json", {}, 15000);
+    const r = await fetchWithRetry("https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json", {}, 15000);
     const d = await r.json() as any;
     const vulns = Array.isArray(d.vulnerabilities) ? d.vulnerabilities : [];
     // Sort by dateAdded descending, take most recent 60
@@ -1017,7 +1061,7 @@ let ransomwareLiveLastFetch = 0;
 async function fetchRansomwareLive() {
   if (Date.now() - ransomwareLiveLastFetch < CACHE_TTL && ransomwareLiveCache.length > 0) return ransomwareLiveCache;
   try {
-    const r = await fetchWithTimeout("https://api.ransomware.live/recentvictims", {
+    const r = await fetchWithRetry("https://api.ransomware.live/recentvictims", {
       headers: { "User-Agent": "SentinelMap/1.0" },
     }, 12000);
     const d = await r.json() as any[];
@@ -1081,6 +1125,30 @@ async function fetchOTX() {
   return [];
 }
 
+
+// ─── MalwareBazaar Feed ───────────────────────────────────────────────────────
+async function fetchMalwareBazaar() {
+  const hit = cached<any>("malwarebazaar");
+  if (hit) return hit;
+  try {
+    const r = await fetchWithRetry("https://mb-api.abuse.ch/api/v1/", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: "query=get_recent&selector=100"
+    }, 12000);
+    const d = await r.json() as any;
+    const samples = d.data || [];
+    if (samples.length > 0) {
+      const data = samples.slice(0, 30);
+      setCached("malwarebazaar", data);
+      feedStatuses.malwarebazaar.status = "live";
+      feedStatuses.malwarebazaar.lastUpdated = Date.now();
+      feedStatuses.malwarebazaar.count = data.length;
+      return data;
+    }
+  } catch { feedStatuses.malwarebazaar.status = "offline"; }
+  return [];
+}
 
 // ─── Routes ───────────────────────────────────────────────────────────────
 export async function registerRoutes(httpServer: any, app: Express): Promise<Server> {
@@ -1158,6 +1226,18 @@ export async function registerRoutes(httpServer: any, app: Express): Promise<Ser
     } catch (err) {
       res.status(500).json({ error: "Country stats error" });
     }
+  });
+
+  app.get("/api/health", (_req, res) => {
+    const feedSummary = Object.values(feedStatuses);
+    const liveCount = feedSummary.filter(f => f.status === "live").length;
+    res.json({
+      status: "ok",
+      uptime: process.uptime(),
+      feeds: { total: feedSummary.length, live: liveCount, offline: feedSummary.length - liveCount },
+      cachedEvents: cachedEvents.length,
+      lastFetch: lastFetchTime,
+    });
   });
 
   return httpServer;
