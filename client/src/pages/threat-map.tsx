@@ -75,19 +75,109 @@ function pushURLState(state: ViewState) {
 }
 
 // ─── Arc canvas overlay ────────────────────────────────────────────────────
+interface LiveArc {
+  id: string;
+  srcX: number; srcY: number;
+  dstX: number; dstY: number;
+  ctrlX: number; ctrlY: number;
+  progress: number;
+  speed: number;
+  color: string;
+  r: number; g: number; b: number;
+  thickness: number;
+  glowAlpha: number;
+  fading: boolean;
+  fadeAlpha: number;
+  done: boolean;
+}
+
+interface PulseRing {
+  x: number;
+  y: number;
+  radius: number;
+  maxRadius: number;
+  alpha: number;
+  color: string;
+  r: number; g: number; b: number;
+}
+
+const MAX_CONCURRENT_ARCS = 25;
+
 function ArcCanvas({ events, map, activeLayers }: {
   events: CyberEvent[];
   map: L.Map;
   activeLayers: Set<LayerType>;
 }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animRef   = useRef<number>(0);
-  const progRef   = useRef<Map<string, number>>(new Map());
+  const canvasRef       = useRef<HTMLCanvasElement>(null);
+  const animRef         = useRef<number>(0);
+  const activeArcsRef   = useRef<LiveArc[]>([]);
+  const pulseRingsRef   = useRef<PulseRing[]>([]);
+  const addIntervalRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const eventsRef       = useRef<CyberEvent[]>([]);
 
+  // Keep events ref up to date without triggering animation restart
   const visibleEvents = useMemo(
     () => events.filter(e => activeLayers.has(e.layer)).slice(0, 80),
     [events, activeLayers]
   );
+  useEffect(() => { eventsRef.current = visibleEvents; }, [visibleEvents]);
+
+  // Helper: schedule the next arc addition at a random interval
+  function scheduleNextArc() {
+    const delay = 800 + Math.random() * 1700; // 800–2500ms
+    addIntervalRef.current = setTimeout(() => {
+      spawnArc();
+      scheduleNextArc();
+    }, delay);
+  }
+
+  function spawnArc() {
+    const pool = eventsRef.current;
+    if (!pool.length) return;
+
+    const ev = pool[Math.floor(Math.random() * pool.length)];
+    const color = LAYER_META[ev.layer].color;
+    const [r, g, b] = hexToRgbArr(color);
+    const severity = ev.severity / 5;
+    const confidence = ev.confidence;
+
+    let srcPt: L.Point, dstPt: L.Point;
+    try {
+      srcPt = map.latLngToContainerPoint([ev.srcLat, ev.srcLon]);
+      dstPt = map.latLngToContainerPoint([ev.dstLat, ev.dstLon]);
+    } catch { return; }
+
+    const dx = dstPt.x - srcPt.x;
+    const dy = dstPt.y - srcPt.y;
+    if (Math.sqrt(dx * dx + dy * dy) < 10) return;
+
+    const heightMult = 0.3 + Math.random() * 0.5;
+    // Control point lifts the arc above the chord midpoint
+    const ctrlX = (srcPt.x + dstPt.x) / 2;
+    const ctrlY = Math.min(srcPt.y, dstPt.y) - heightMult * 150;
+
+    const arc: LiveArc = {
+      id: `${ev.id}-${Date.now()}-${Math.random()}`,
+      srcX: srcPt.x, srcY: srcPt.y,
+      dstX: dstPt.x, dstY: dstPt.y,
+      ctrlX, ctrlY,
+      progress: 0,
+      speed: 0.004 + severity * 0.002 + Math.random() * 0.003,
+      color,
+      r, g, b,
+      thickness: 0.8 + severity * 0.4,
+      glowAlpha: 0.15 + confidence / 400,
+      fading: false,
+      fadeAlpha: 1,
+      done: false,
+    };
+
+    const arcs = activeArcsRef.current;
+    if (arcs.length >= MAX_CONCURRENT_ARCS) {
+      arcs.splice(0, arcs.length - MAX_CONCURRENT_ARCS + 1);
+    }
+    arcs.push(arc);
+  }
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -100,85 +190,120 @@ function ArcCanvas({ events, map, activeLayers }: {
     };
     resize();
     map.on("resize", resize);
-    map.on("move",   () => {}); // force redraw on move
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    let frame = 0;
+    // Seed a few arcs immediately so the map isn't bare on first render
+    for (let i = 0; i < 8; i++) {
+      setTimeout(() => spawnArc(), i * 300);
+    }
+    scheduleNextArc();
 
     function draw() {
       if (!ctx || !canvas) return;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      frame++;
 
-      for (const ev of visibleEvents) {
-        const color = LAYER_META[ev.layer].color;
-        const p = (progRef.current.get(ev.id) || Math.random());
-        progRef.current.set(ev.id, (p + 0.003) % 1);
+      const arcs = activeArcsRef.current;
+      const rings = pulseRingsRef.current;
 
-        const srcPt = map.latLngToContainerPoint([ev.srcLat, ev.srcLon]);
-        const dstPt = map.latLngToContainerPoint([ev.dstLat, ev.dstLon]);
+      // ── Draw each active arc ──
+      for (const arc of arcs) {
+        if (arc.done) continue;
 
-        const dx = dstPt.x - srcPt.x;
-        const dy = dstPt.y - srcPt.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 5) continue;
+        const alpha = arc.fading ? arc.fadeAlpha : 1;
+        const t     = Math.min(arc.progress, 1);
 
-        const cpx = (srcPt.x + dstPt.x) / 2 - dy * 0.35;
-        const cpy = (srcPt.y + dstPt.y) / 2 + dx * 0.35;
-
-        // Trail arc
-        const alpha = 0.12 + (ev.priorityScore / 100) * 0.12;
+        // Draw the traveled path by sampling steps from 0→t
+        const steps = Math.max(2, Math.floor(t * 60));
         ctx.beginPath();
-        ctx.moveTo(srcPt.x, srcPt.y);
-        ctx.quadraticCurveTo(cpx, cpy, dstPt.x, dstPt.y);
-        ctx.strokeStyle = hexToRgba(color, alpha);
-        ctx.lineWidth = 0.8;
+        for (let i = 0; i <= steps; i++) {
+          const s = (i / steps) * t;
+          const px = (1-s)*(1-s)*arc.srcX + 2*(1-s)*s*arc.ctrlX + s*s*arc.dstX;
+          const py = (1-s)*(1-s)*arc.srcY + 2*(1-s)*s*arc.ctrlY + s*s*arc.dstY;
+          i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+        }
+        // Glow pass
+        ctx.save();
+        ctx.shadowColor = `rgba(${arc.r},${arc.g},${arc.b},${arc.glowAlpha * alpha})`;
+        ctx.shadowBlur  = 6;
+        ctx.strokeStyle = `rgba(${arc.r},${arc.g},${arc.b},${0.18 * alpha})`;
+        ctx.lineWidth   = arc.thickness + 2;
+        ctx.stroke();
+        ctx.restore();
+        // Core line
+        ctx.strokeStyle = `rgba(${arc.r},${arc.g},${arc.b},${0.55 * alpha})`;
+        ctx.lineWidth   = arc.thickness;
         ctx.stroke();
 
-        // Moving particle
-        const t = p;
-        const px = (1-t)*(1-t)*srcPt.x + 2*(1-t)*t*cpx + t*t*dstPt.x;
-        const py = (1-t)*(1-t)*srcPt.y + 2*(1-t)*t*cpy + t*t*dstPt.y;
-
-        const grd = ctx.createRadialGradient(px, py, 0, px, py, 5);
-        grd.addColorStop(0, hexToRgba(color, 0.95));
-        grd.addColorStop(1, hexToRgba(color, 0));
+        // Particle at leading edge
+        const px = (1-t)*(1-t)*arc.srcX + 2*(1-t)*t*arc.ctrlX + t*t*arc.dstX;
+        const py = (1-t)*(1-t)*arc.srcY + 2*(1-t)*t*arc.ctrlY + t*t*arc.dstY;
+        const pr = 3.5;
+        const grad = ctx.createRadialGradient(px, py, 0, px, py, pr * 2.5);
+        grad.addColorStop(0, `rgba(${arc.r},${arc.g},${arc.b},${0.95 * alpha})`);
+        grad.addColorStop(0.4, `rgba(${arc.r},${arc.g},${arc.b},${0.4 * alpha})`);
+        grad.addColorStop(1, `rgba(${arc.r},${arc.g},${arc.b},0)`);
         ctx.beginPath();
-        ctx.arc(px, py, 5, 0, Math.PI * 2);
-        ctx.fillStyle = grd;
+        ctx.arc(px, py, pr * 2.5, 0, Math.PI * 2);
+        ctx.fillStyle = grad;
         ctx.fill();
-
-        // Impact flare at destination
-        if (t > 0.93) {
-          const flareAlpha = (1 - t) / 0.07;
-          const flareR = (1 - t) / 0.07 * 18;
-          const fg = ctx.createRadialGradient(dstPt.x, dstPt.y, 0, dstPt.x, dstPt.y, flareR);
-          fg.addColorStop(0, hexToRgba(color, flareAlpha * 0.6));
-          fg.addColorStop(1, hexToRgba(color, 0));
-          ctx.beginPath();
-          ctx.arc(dstPt.x, dstPt.y, flareR, 0, Math.PI * 2);
-          ctx.fillStyle = fg;
-          ctx.fill();
-        }
 
         // Source dot
         ctx.beginPath();
-        ctx.arc(srcPt.x, srcPt.y, 2.5, 0, Math.PI * 2);
-        ctx.fillStyle = hexToRgba(color, 0.7);
+        ctx.arc(arc.srcX, arc.srcY, 2, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${arc.r},${arc.g},${arc.b},${0.6 * alpha})`;
         ctx.fill();
+
+        // Progress arc forward
+        if (!arc.fading) {
+          arc.progress += arc.speed;
+          if (arc.progress >= 1) {
+            arc.progress = 1;
+            arc.fading   = true;
+            // Spawn impact pulse ring
+            pulseRingsRef.current.push({
+              x: arc.dstX, y: arc.dstY,
+              radius: 3,
+              maxRadius: 22 + arc.thickness * 4,
+              alpha: 0.75,
+              color: arc.color,
+              r: arc.r, g: arc.g, b: arc.b,
+            });
+          }
+        } else {
+          arc.fadeAlpha -= 0.012;
+          if (arc.fadeAlpha <= 0) arc.done = true;
+        }
       }
+
+      // Prune done arcs
+      activeArcsRef.current = arcs.filter(a => !a.done);
+
+      // ── Draw pulse rings ──
+      for (const ring of rings) {
+        ctx.beginPath();
+        ctx.arc(ring.x, ring.y, ring.radius, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(${ring.r},${ring.g},${ring.b},${ring.alpha})`;
+        ctx.lineWidth   = 1.5;
+        ctx.stroke();
+        ring.radius += 0.8;
+        ring.alpha  -= 0.025;
+      }
+      pulseRingsRef.current = rings.filter(r => r.alpha > 0);
 
       animRef.current = requestAnimationFrame(draw);
     }
 
     animRef.current = requestAnimationFrame(draw);
+
     return () => {
       cancelAnimationFrame(animRef.current);
+      if (addIntervalRef.current) clearTimeout(addIntervalRef.current);
       map.off("resize", resize);
     };
-  }, [visibleEvents, map]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map]);
 
   return (
     <canvas
@@ -207,11 +332,25 @@ function MapMarkers({ events, activeLayers, onSelect, selectedId }: {
   selectedId: string | null;
 }) {
   const map = useMap();
+  const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set());
+
+  // Stagger marker appearance using displayDelayMs
+  useEffect(() => {
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    events.forEach(ev => {
+      const delay = (ev as any).displayDelayMs || 0;
+      const t = setTimeout(() => {
+        setVisibleIds(prev => new Set(Array.from(prev).concat(ev.id)));
+      }, delay);
+      timers.push(t);
+    });
+    return () => timers.forEach(clearTimeout);
+  }, [events]);
 
   useEffect(() => {
     const markers: L.Marker[] = [];
 
-    const visible = events.filter(e => activeLayers.has(e.layer));
+    const visible = events.filter(e => activeLayers.has(e.layer) && visibleIds.has(e.id));
 
     for (const ev of visible) {
       const color = LAYER_META[ev.layer].color;
@@ -242,7 +381,7 @@ function MapMarkers({ events, activeLayers, onSelect, selectedId }: {
     }
 
     return () => { markers.forEach(m => m.remove()); };
-  }, [events, activeLayers, map, onSelect, selectedId]);
+  }, [events, activeLayers, map, onSelect, selectedId, visibleIds]);
 
   return null;
 }
@@ -1054,6 +1193,7 @@ export default function ThreatMap() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [viewMode, setViewMode]            = useState<"arcs"|"heatmap">("arcs");
   const [showChoropleth, setShowChoropleth] = useState(false);
+  const [liveEvents, setLiveEvents]         = useState<CyberEvent[]>([]);
   const mapRef = useRef<L.Map | null>(null);
 
   const sidebarWidth = sidebarCollapsed ? 48 : 260;
@@ -1070,7 +1210,14 @@ export default function ThreatMap() {
     staleTime: 2 * 60 * 1000,
   });
 
-  const allEvents = useMemo(() => data?.events || [], [data]);
+  const allEvents = useMemo(() => {
+    const base = data?.events || [];
+    if (!liveEvents.length) return base;
+    // Merge: live events first, deduplicate by id, cap at 300
+    const merged = new Map(base.map(e => [e.id, e]));
+    for (const ev of liveEvents) merged.set(ev.id, ev);
+    return Array.from(merged.values()).slice(0, 300);
+  }, [data, liveEvents]);
   const feeds     = useMemo(() => data?.feeds  || [], [data]);
 
   // ── Search filter ──
@@ -1144,6 +1291,36 @@ export default function ThreatMap() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [handleZoom]);
+
+  // ── SSE live event stream ──
+  useEffect(() => {
+    const evtSource = new EventSource('/api/threats/sse');
+
+    evtSource.addEventListener('threat', (e: MessageEvent) => {
+      try {
+        const ev = JSON.parse(e.data) as CyberEvent;
+        setLiveEvents(prev => {
+          // Check for exact duplicate by indicator+layer
+          const exists = prev.some(p => p.indicator === ev.indicator && p.layer === ev.layer);
+          if (exists) {
+            // Rotate: replace a random slot in the first 20
+            const newArr = [...prev];
+            const replaceIdx = Math.floor(Math.random() * Math.min(20, newArr.length));
+            newArr[replaceIdx] = ev;
+            return newArr;
+          }
+          return [ev, ...prev].slice(0, 300);
+        });
+      } catch { /* ignore parse errors */ }
+    });
+
+    evtSource.onerror = () => {
+      // SSE connection error — browser will auto-reconnect; no action needed
+    };
+
+    return () => evtSource.close();
+  }, []);
+
 
   // CSS for spin animation
   useEffect(() => {
