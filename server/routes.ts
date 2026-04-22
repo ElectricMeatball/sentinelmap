@@ -48,11 +48,11 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, ms = 10000): P
   return fetch(url, { ...options, signal: ctrl.signal }).finally(() => clearTimeout(t));
 }
 
-async function geolocateBatch(ips: string[], max = 40) {
+async function geolocateBatch(ips: string[], max = 20) {
   const toResolve = ips.filter(ip => !geoCache.has(ip)).slice(0, max);
   await Promise.all(
     toResolve.map((ip, i) =>
-      new Promise<void>(r => setTimeout(r, i * 110)).then(() => geolocateIP(ip))
+      new Promise<void>(r => setTimeout(r, i * 50)).then(() => geolocateIP(ip))
     )
   );
 }
@@ -176,7 +176,7 @@ async function fetchBlocklist() {
   try {
     const r = await fetchWithTimeout("https://lists.blocklist.de/lists/all.txt");
     const text = await r.text();
-    const ips = text.split("\n").filter(l => l.trim() && !l.startsWith("#")).slice(0, 40);
+    const ips = text.split("\n").filter(l => l.trim() && !l.startsWith("#")).slice(0, 20);
     if (ips.length) {
       setCached("blocklist", ips);
       feedStatuses.blocklist.status = "live";
@@ -197,7 +197,7 @@ async function fetchSANS() {
     });
     const d = await r.json() as any[];
     if (Array.isArray(d) && d.length) {
-      const data = d.slice(0, 50);
+      const data = d.slice(0, 20);
       setCached("sans", data);
       feedStatuses.sans.status = "live";
       feedStatuses.sans.lastUpdated = Date.now();
@@ -233,7 +233,7 @@ async function fetchCinsscore() {
   try {
     const r = await fetchWithTimeout("http://cinsscore.com/list/ci-badguys.txt");
     const text = await r.text();
-    const ips = text.split("\n").filter(l => l.trim() && !l.startsWith("#")).slice(0, 40);
+    const ips = text.split("\n").filter(l => l.trim() && !l.startsWith("#")).slice(0, 20);
     if (ips.length) {
       setCached("cinsscore", ips);
       feedStatuses.cinsscore.status = "live";
@@ -276,7 +276,7 @@ async function fetchEmergingThreats() {
   try {
     const r = await fetchWithTimeout("https://rules.emergingthreats.net/blockrules/compromised-ips.txt");
     const text = await r.text();
-    const ips = text.split("\n").filter(l => l.trim() && !l.startsWith("#")).slice(0, 40);
+    const ips = text.split("\n").filter(l => l.trim() && !l.startsWith("#")).slice(0, 20);
     if (ips.length) {
       setCached("emergingthreats", ips);
       feedStatuses.emergingthreats.status = "live";
@@ -299,7 +299,7 @@ async function fetchSpamhaus() {
       if (line.startsWith(";") || !line.trim()) continue;
       const ip = line.split(";")[0].trim().split("/")[0].trim();
       if (/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) ips.push(ip);
-      if (ips.length >= 30) break;
+      if (ips.length >= 15) break;
     }
     if (ips.length) {
       setCached("spamhaus", ips);
@@ -324,7 +324,7 @@ async function fetchDataPlane() {
       const parts = line.split("|").map(p => p.trim());
       const ip = parts.length >= 3 ? parts[2] : parts[0];
       if (/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) ips.push(ip);
-      if (ips.length >= 30) break;
+      if (ips.length >= 15) break;
     }
     if (ips.length) {
       setCached("dataplane", ips);
@@ -411,10 +411,10 @@ async function buildEvents(): Promise<CyberEvent[]> {
   if (tfRaw?.query_status === "ok" && Array.isArray(tfRaw.data)) {
     feedStatuses.threatfox.status = "live";
     feedStatuses.threatfox.lastUpdated = now;
-    const iocs = tfRaw.data.slice(0, 60);
+    const iocs = tfRaw.data.slice(0, 30);
     feedStatuses.threatfox.count = iocs.length;
     const ips = iocs.map((x: any) => extractIP(x.ioc || "")).filter(Boolean) as string[];
-    await geolocateBatch(ips, 25);
+    await geolocateBatch(ips, 15);
     for (const ioc of iocs) {
       const ip = extractIP(ioc.ioc || "");
       const geo = ip ? geoCache.get(ip) : null;
@@ -456,7 +456,7 @@ async function buildEvents(): Promise<CyberEvent[]> {
     .map((u: any) => extractIP((u.url || "").replace(/^https?:\/\//, "").split(/[/:]/)[0]))
     .filter(Boolean) as string[];
   await geolocateBatch(urlhausIPs, 20);
-  for (const url of urlhausData.slice(0, 30)) {
+  for (const url of urlhausData.slice(0, 20)) {
     const host = (url.url || "").replace(/^https?:\/\//, "").split(/[/:]/)[0];
     const ip = extractIP(host);
     const geo = ip ? geoCache.get(ip) : null;
@@ -493,7 +493,7 @@ async function buildEvents(): Promise<CyberEvent[]> {
   // ── Feodo Tracker (C2) ──
   const feodoIPs = feodoData.map((e: any) => e.ip_address || e.dst_ip || "").filter(Boolean) as string[];
   await geolocateBatch(feodoIPs, 20);
-  for (const entry of feodoData.slice(0, 25)) {
+  for (const entry of feodoData.slice(0, 15)) {
     const ip = entry.ip_address || entry.dst_ip || "";
     const geo = ip ? geoCache.get(ip) : null;
     if (!geo) continue;
@@ -525,8 +525,8 @@ async function buildEvents(): Promise<CyberEvent[]> {
   }
 
   // ── Blocklist.de (Brute Force) ──
-  await geolocateBatch(blocklistIPs.slice(0, 12), 12);
-  for (const ip of blocklistIPs.slice(0, 12)) {
+  await geolocateBatch(blocklistIPs.slice(0, 8), 8);
+  for (const ip of blocklistIPs.slice(0, 8)) {
     const geo = geoCache.get(ip);
     if (!geo) continue;
     const target = pickTarget();

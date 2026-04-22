@@ -1252,27 +1252,64 @@ export default function ThreatMap() {
       <ZoomControls sidebarWidth={sidebarWidth} onZoom={handleZoom} />
 
       {/* Loading overlay */}
-      {isLoading && !allEvents.length && (
+      {isLoading && allEvents.length === 0 && (
         <div style={{
-          position: "absolute", top: 0, left: sidebarWidth, right: 0, bottom: 0,
-          zIndex: 2000,
+          position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
+          zIndex: 999,
           display: "flex", alignItems: "center", justifyContent: "center",
-          flexDirection: "column", gap: "16px",
-          background: "rgba(6,11,20,0.8)",
-          backdropFilter: "blur(4px)",
+          flexDirection: "column", gap: "20px",
+          background: "rgba(5,10,20,0.85)",
+          backdropFilter: "blur(6px)",
         }}>
+          {/* Pulsing logo */}
           <div style={{
-            width: "48px", height: "48px", borderRadius: "50%",
-            border: "2px solid rgba(56,189,248,0.15)",
-            borderTop: "2px solid #38bdf8",
-            animation: "spin 1s linear infinite",
-          }} />
-          <div style={{ fontFamily: "'Rajdhani',sans-serif", fontWeight: 700, fontSize: "13px", textTransform: "uppercase", letterSpacing: "0.12em", color: "rgba(226,232,240,0.5)" }}>
-            Ingesting threat feeds...
+            fontFamily: "'Rajdhani', sans-serif",
+            fontWeight: 800,
+            fontSize: "28px",
+            letterSpacing: "0.18em",
+            textTransform: "uppercase",
+            color: "#38bdf8",
+            animation: "sentinelPulse 2s ease-in-out infinite",
+            textShadow: "0 0 24px rgba(56,189,248,0.6), 0 0 48px rgba(56,189,248,0.2)",
+          }}>
+            SENTINEL<span style={{ color: "rgba(226,232,240,0.5)" }}>-</span>MAP
           </div>
-          <div style={{ fontSize: "11px", fontFamily: "'JetBrains Mono',monospace", color: "rgba(226,232,240,0.25)" }}>
-            Fetching 12 OSINT sources
+          {/* Loading text */}
+          <div style={{
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: "12px",
+            letterSpacing: "0.08em",
+            color: "rgba(226,232,240,0.55)",
+            textTransform: "uppercase",
+          }}>
+            Loading intelligence feeds...
           </div>
+          {/* Progress bar */}
+          <div style={{
+            width: "220px",
+            height: "2px",
+            background: "rgba(56,189,248,0.12)",
+            borderRadius: "2px",
+            overflow: "hidden",
+          }}>
+            <div style={{
+              height: "100%",
+              background: "linear-gradient(90deg, transparent, #38bdf8, transparent)",
+              animation: "loadingScan 1.6s ease-in-out infinite",
+              borderRadius: "2px",
+            }} />
+          </div>
+          {/* Keyframe injection */}
+          <style>{`
+            @keyframes sentinelPulse {
+              0%, 100% { opacity: 1; text-shadow: 0 0 24px rgba(56,189,248,0.6), 0 0 48px rgba(56,189,248,0.2); }
+              50% { opacity: 0.6; text-shadow: 0 0 12px rgba(56,189,248,0.3); }
+            }
+            @keyframes loadingScan {
+              0% { transform: translateX(-100%); width: 60%; }
+              100% { transform: translateX(280px); width: 60%; }
+            }
+          `}</style>
         </div>
       )}
     </div>
