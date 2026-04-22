@@ -42,6 +42,8 @@ html, body, #root {
 .leaflet-container {
   background: #060b14 !important;
   font-family: 'Inter', sans-serif;
+  height: 100% !important;
+  width: 100% !important;
 }
 
 .leaflet-control-zoom {
@@ -86,7 +88,7 @@ html, body, #root {
   position: absolute;
   top: 0;
   left: 0;
-  height: 100%;
+  height: 100vh;
   width: 260px;
   z-index: 1000;
   background: rgba(6, 11, 20, 0.92);
@@ -95,6 +97,7 @@ html, body, #root {
   display: flex;
   flex-direction: column;
   pointer-events: all;
+  overflow: hidden;
 }
 
 /* Top bar */

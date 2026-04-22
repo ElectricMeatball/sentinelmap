@@ -503,7 +503,7 @@ function Sidebar({
       </div>
 
       {!collapsed && (
-        <>
+        <div style={{ display: "flex", flexDirection: "column", flex: 1, overflow: "hidden", minHeight: 0 }}>
           {/* Stats row */}
           <div style={{ padding: "10px 14px", borderBottom: "1px solid rgba(99,179,237,0.12)" }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
@@ -594,8 +594,8 @@ function Sidebar({
           {/* Feed status */}
           <div style={{ borderTop: "1px solid rgba(99,179,237,0.12)", padding: "0" }}>
             <div className="section-header">Data Sources</div>
-            <div style={{ padding: "0 14px 12px", display: "flex", flexDirection: "column", gap: "5px" }}>
-              {feeds.slice(0, 8).map(f => (
+            <div style={{ padding: "0 14px 12px", display: "flex", flexDirection: "column", gap: "5px", maxHeight: "180px", overflowY: "auto" }}>
+              {feeds.map(f => (
                 <div key={f.id} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                   <div className={`feed-dot ${f.status}`} />
                   <span style={{ fontSize: "11px", color: "rgba(226,232,240,0.5)", flex: 1, fontFamily: "'JetBrains Mono',monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
@@ -604,7 +604,7 @@ function Sidebar({
               ))}
             </div>
           </div>
-        </>
+        </div>
       )}
     </div>
   );
@@ -629,7 +629,7 @@ function TopBar({
   };
 
   return (
-    <div className="sentinel-topbar" style={{ left: sidebarWidth }}>
+    <div className="sentinel-topbar" style={{ left: sidebarWidth, flexWrap: "nowrap", overflow: "hidden" }}>
       {/* Live indicator */}
       <div style={{ display: "flex", alignItems: "center", gap: "6px", marginRight: "4px" }}>
         <div className="live-dot" />
