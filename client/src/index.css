@@ -506,4 +506,102 @@ html, body, #root {
 /* Map canvas overlay for arcs */
 .leaflet-pane.arc-pane {
   z-index: 450;
+
+/* ── Palantir-grade panel borders ── */
+.sentinel-sidebar,
+.sentinel-panel {
+  border-right: 1px solid rgba(99,179,237,0.08);
+}
+
+/* ── Event list item hover ── */
+.event-list-item:hover {
+  background: rgba(99,179,237,0.06) !important;
+  border-left: 2px solid rgba(99,179,237,0.4) !important;
+}
+
+/* ── Scrollbar styling (Palantir dark) ── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(99,179,237,0.2) transparent;
+}
+*::-webkit-scrollbar { width: 4px; height: 4px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: rgba(99,179,237,0.2); border-radius: 2px; }
+*::-webkit-scrollbar-thumb:hover { background: rgba(99,179,237,0.4); }
+
+/* ── Intelligence panel ── */
+.intel-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 3px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.intel-badge.high { background: rgba(239,68,68,0.15); color: #ef4444; border: 1px solid rgba(239,68,68,0.3); }
+.intel-badge.medium { background: rgba(245,158,11,0.15); color: #f59e0b; border: 1px solid rgba(245,158,11,0.3); }
+.intel-badge.low { background: rgba(99,179,237,0.1); color: #63b3ed; border: 1px solid rgba(99,179,237,0.25); }
+.intel-badge.confirmed { background: rgba(16,185,129,0.12); color: #10b981; border: 1px solid rgba(16,185,129,0.3); }
+.intel-badge.inferred { background: rgba(167,139,250,0.1); color: #a78bfa; border: 1px solid rgba(167,139,250,0.25); }
+
+/* ── Map crosshair cursor ── */
+.leaflet-container { cursor: crosshair !important; }
+.leaflet-container.leaflet-grab { cursor: crosshair !important; }
+.leaflet-container.leaflet-dragging { cursor: crosshair !important; }
+
+/* ── Scanline overlay (subtle CRT effect over map) ── */
+.sentinel-scanlines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 399;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,0,0,0.03) 2px,
+    rgba(0,0,0,0.03) 4px
+  );
+}
+
+/* ── Top bar icons ── */
+.topbar-stat {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid rgba(99,179,237,0.1);
+  border-radius: 4px;
+  background: rgba(99,179,237,0.04);
+}
+.topbar-stat span {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: rgba(226,232,240,0.7);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Threat arc glow ── */
+@keyframes radarSweep {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* ── Event panel sections ── */
+.intel-section {
+  border-top: 1px solid rgba(99,179,237,0.08);
+  padding: 10px 16px;
+}
+.intel-section-label {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(99,179,237,0.4);
+  margin-bottom: 6px;
 }

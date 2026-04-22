@@ -680,11 +680,9 @@ function TopBar({
 
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "10px" }}>
         {/* Total events */}
-        <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-          <AlertTriangle size={12} color="#f59e0b" />
-          <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: "12px", color: "rgba(226,232,240,0.6)" }}>
-            {totalEvents.toLocaleString()} events
-          </span>
+        <div className="topbar-stat">
+          <AlertTriangle size={11} color="#f59e0b" />
+          <span>{totalEvents.toLocaleString()} events</span>
         </div>
 
         {/* View mode toggle: Arcs / Heatmap */}
@@ -775,6 +773,7 @@ function EventPanel({ event, onClose, sidebarWidth }: {
             fontSize: "13px", textTransform: "uppercase", letterSpacing: "0.06em",
             color: color,
           }}>{meta.label}</div>
+          <div style={{ fontFamily: "'Rajdhani',sans-serif", fontSize: '9px', letterSpacing: '0.14em', color: 'rgba(99,179,237,0.35)', textTransform: 'uppercase', marginTop: '2px' }}>SENTINEL INTELLIGENCE</div>
           <div style={{ fontSize: "10px", color: "rgba(226,232,240,0.4)", fontFamily: "'JetBrains Mono',monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {event.indicator}
           </div>
@@ -798,7 +797,7 @@ function EventPanel({ event, onClose, sidebarWidth }: {
                   }} />
                 ))}
               </div>
-              <span style={{ fontSize: "10px", color: severityColors[event.severity - 1], fontFamily: "'Rajdhani',sans-serif", fontWeight: 700 }}>
+              <span className={`intel-badge ${event.severity >= 4 ? 'high' : event.severity === 3 ? 'medium' : 'low'}`}>
                 {severityLabels[event.severity - 1]}
               </span>
             </div>
@@ -866,7 +865,12 @@ function EventPanel({ event, onClose, sidebarWidth }: {
         <div style={{ display: "flex", flexDirection: "column", gap: "1px" }}>
           <MetaRow k="Feed" v={event.source} />
           <MetaRow k="Reliability" v={`${event.sourceReliability}%`} />
-          <MetaRow k="Relationship" v={event.relationshipType.toUpperCase()} />
+          <div className="meta-row">
+            <span className="meta-key">Relationship</span>
+            <span className={`intel-badge ${event.relationshipType === 'confirmed' ? 'confirmed' : 'inferred'}`}>
+              {event.relationshipType.toUpperCase()}
+            </span>
+          </div>
           <MetaRow k="Observed" v={new Date(event.observedAt).toISOString().replace("T", " ").slice(0, 19) + " UTC"} />
           <MetaRow k="Ingested" v={new Date(event.ingestedAt).toISOString().replace("T", " ").slice(0, 19) + " UTC"} />
         </div>
@@ -1203,6 +1207,9 @@ export default function ThreatMap() {
           selectedId={selectedEvent?.id || null}
         />
       </MapContainer>
+
+      {/* Subtle scanlines for depth */}
+      <div className="sentinel-scanlines" />
 
       {/* Left sidebar */}
       <Sidebar
