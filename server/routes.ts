@@ -113,7 +113,7 @@ const feedStatuses: Record<string, FeedStatus> = {
 };
 
 // ─── Per-feed cache ────────────────────────────────────────────────────────
-const CACHE_TTL = 3 * 60 * 60 * 1000; // 3-hour feed refresh
+const CACHE_TTL = 24 * 60 * 60 * 1000; // 24-hour feed cache
 const caches: Record<string, { data: any[]; ts: number }> = {};
 
 function cached<T>(key: string): T[] | null {
@@ -363,7 +363,7 @@ async function fetchTurris() {
 // ─── Main event-building logic ────────────────────────────────────────────
 let cachedEvents: CyberEvent[] = [];
 let lastFetchTime = 0;
-const EVENT_CACHE_TTL = 3 * 60 * 60 * 1000;
+const EVENT_CACHE_TTL = 24 * 60 * 60 * 1000;
 
 async function buildEvents(): Promise<CyberEvent[]> {
   const now = Date.now();

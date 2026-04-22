@@ -942,7 +942,7 @@ export default function ThreatMap() {
       >
         {/* CartoDB Dark Matter tiles — free, no API key */}
         <TileLayer
-          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+          url="https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png"
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'
           maxZoom={19}
           subdomains="abcd"
