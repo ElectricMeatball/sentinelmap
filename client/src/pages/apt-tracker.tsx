@@ -1,930 +1,1007 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { CyberEvent } from "@shared/schema";
-import { Crosshair, ExternalLink } from "lucide-react";
+import { Shield, ChevronRight, X, ExternalLink, Activity, Search, Crosshair } from "lucide-react";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface RecentOp {
+  date: string;
+  op: string;
+  confidence: "Confirmed" | "High" | "Medium";
+}
 
 interface APTGroup {
   id: string;
   name: string;
   aliases: string[];
   sponsor: string;
-  sponsorCode: string;
   sponsorFlag: string;
+  agency: string;
   active: boolean;
-  since: string;
-  sectors: string[];
-  targets: string[];
-  techniques: string[];
+  activeSince: string;
+  sophistication: 1 | 2 | 3 | 4 | 5;
+  motivation: string[];
+  primaryTargets: string[];
+  regions: string[];
   malwareFamilies: string[];
+  recentCVEs: string[];
+  ttps: string[];
+  recentOps: RecentOp[];
   color: string;
-  threatLevel: 1 | 2 | 3 | 4 | 5;
-  description: string;
-  sourceUrl: string;
+  attackCount: number;
 }
+
+// ─── Sponsor colour map ───────────────────────────────────────────────────────
+
+const SPONSOR_COLOR: Record<string, string> = {
+  Russia:   "#ef4444",
+  China:    "#f97316",
+  "North Korea": "#a855f7",
+  Iran:     "#10b981",
+  Criminal: "#94a3b8",
+};
+
+// ─── APT Data ─────────────────────────────────────────────────────────────────
 
 const APT_GROUPS: APTGroup[] = [
   {
     id: "apt28",
     name: "APT28",
-    aliases: ["Fancy Bear", "Sofacy", "Sednit", "STRONTIUM"],
-    sponsor: "Russia",
-    sponsorCode: "RU",
-    sponsorFlag: "🇷🇺",
-    active: true,
-    since: "2004",
-    sectors: ["Government", "Military", "Defence", "Media", "Energy"],
-    targets: ["USA", "Ukraine", "Germany", "France", "NATO Members"],
-    techniques: ["T1566", "T1071", "T1059", "T1078", "T1190"],
-    malwareFamilies: ["X-Agent", "Sofacy", "Zebrocy", "CHOPSTICK"],
-    color: "#ef4444",
-    threatLevel: 5,
-    description:
-      "Russian GRU-linked group conducting cyber espionage against government, military, and political targets globally since 2004.",
-    sourceUrl: "https://attack.mitre.org/groups/G0007/",
+    aliases: ["Fancy Bear", "Sofacy", "Pawn Storm", "STRONTIUM", "Sednit"],
+    sponsor: "Russia", sponsorFlag: "🇷🇺", agency: "GRU Unit 26165",
+    active: true, activeSince: "2004", sophistication: 5,
+    motivation: ["Espionage", "Political Interference", "Destabilisation"],
+    primaryTargets: ["Government", "Military", "Defense", "Media", "NATO"],
+    regions: ["Europe", "North America", "Middle East"],
+    malwareFamilies: ["X-Agent", "Sofacy", "GAMEFISH", "Zebrocy", "Drovorub", "MASEPIE"],
+    recentCVEs: ["CVE-2023-23397", "CVE-2022-30190", "CVE-2017-0144"],
+    ttps: ["T1566", "T1078", "T1071", "T1027", "T1055", "T1036", "T1059"],
+    recentOps: [
+      { date: "2024-03", op: "Targeting European elections via spear-phishing", confidence: "High" },
+      { date: "2023-12", op: "CVE-2023-23397 Outlook zero-day exploitation", confidence: "Confirmed" },
+      { date: "2023-06", op: "Ukrainian military phishing campaign", confidence: "High" },
+    ],
+    color: "#ef4444", attackCount: 0,
   },
   {
     id: "apt29",
     name: "APT29",
-    aliases: ["Cozy Bear", "The Dukes", "NOBELIUM", "Midnight Blizzard"],
-    sponsor: "Russia",
-    sponsorCode: "RU",
-    sponsorFlag: "🇷🇺",
-    active: true,
-    since: "2008",
-    sectors: ["Government", "Healthcare", "Technology", "Finance", "Think Tanks"],
-    targets: ["USA", "UK", "EU", "NATO", "Ukraine"],
-    techniques: ["T1566", "T1195", "T1071", "T1486", "T1027"],
-    malwareFamilies: ["MiniDuke", "CozyDuke", "SUNBURST", "NOBELIUM"],
-    color: "#ef4444",
-    threatLevel: 5,
-    description:
-      "Russian SVR-linked group behind SolarWinds supply chain attack. Targets government and critical infrastructure for long-term espionage.",
-    sourceUrl: "https://attack.mitre.org/groups/G0016/",
-  },
-  {
-    id: "lazarus",
-    name: "Lazarus Group",
-    aliases: ["HIDDEN COBRA", "Guardians of Peace", "ZINC", "Labyrinth Chollima"],
-    sponsor: "North Korea",
-    sponsorCode: "KP",
-    sponsorFlag: "🇰🇵",
-    active: true,
-    since: "2009",
-    sectors: ["Finance", "Cryptocurrency", "Defence", "Media", "Healthcare"],
-    targets: ["USA", "South Korea", "Japan", "Global Crypto Exchanges"],
-    techniques: ["T1566", "T1059", "T1486", "T1190", "T1055"],
-    malwareFamilies: ["WannaCry", "BLINDINGCAN", "HOPLIGHT", "AppleJeus"],
-    color: "#f59e0b",
-    threatLevel: 5,
-    description:
-      "DPRK state-sponsored group conducting financially motivated attacks and espionage. Responsible for WannaCry and $billions in crypto theft.",
-    sourceUrl: "https://attack.mitre.org/groups/G0032/",
-  },
-  {
-    id: "apt41",
-    name: "APT41",
-    aliases: ["Double Dragon", "Winnti", "Barium", "WICKED SPIDER"],
-    sponsor: "China",
-    sponsorCode: "CN",
-    sponsorFlag: "🇨🇳",
-    active: true,
-    since: "2012",
-    sectors: ["Healthcare", "Technology", "Telecom", "Gaming", "Finance"],
-    targets: ["USA", "UK", "Japan", "India", "South Korea"],
-    techniques: ["T1190", "T1059", "T1027", "T1078", "T1486"],
-    malwareFamilies: ["ShadowPad", "PlugX", "Winnti", "CROSSWALK"],
-    color: "#38bdf8",
-    threatLevel: 5,
-    description:
-      "MSS-linked group conducting both espionage and financially motivated attacks. Unique in combining state-sponsored and criminal activity.",
-    sourceUrl: "https://attack.mitre.org/groups/G0096/",
-  },
-  {
-    id: "apt40",
-    name: "APT40",
-    aliases: ["BRONZE MOHAWK", "GADOLINIUM", "Kryptonite Panda"],
-    sponsor: "China",
-    sponsorCode: "CN",
-    sponsorFlag: "🇨🇳",
-    active: true,
-    since: "2013",
-    sectors: ["Maritime", "Defence", "Aviation", "Government", "Research"],
-    targets: ["USA", "UK", "Germany", "Australia", "Maritime Industry"],
-    techniques: ["T1566", "T1190", "T1133", "T1078", "T1059"],
-    malwareFamilies: ["BADFLICK", "PHOTO", "HOMEFRY", "LUNCHMONEY"],
-    color: "#38bdf8",
-    threatLevel: 4,
-    description:
-      "MSS Hainan-linked group focusing on maritime, defence, and aviation targets. Active in Belt and Road Initiative regions.",
-    sourceUrl: "https://attack.mitre.org/groups/G0065/",
-  },
-  {
-    id: "kimsuky",
-    name: "Kimsuky",
-    aliases: ["Black Banshee", "Thallium", "Velvet Chollima"],
-    sponsor: "North Korea",
-    sponsorCode: "KP",
-    sponsorFlag: "🇰🇵",
-    active: true,
-    since: "2012",
-    sectors: ["Government", "Think Tanks", "Nuclear", "Defence", "Research"],
-    targets: ["South Korea", "USA", "Japan", "Russia", "Europe"],
-    techniques: ["T1566", "T1059", "T1071", "T1078", "T1136"],
-    malwareFamilies: ["BabyShark", "KONNI", "AppleSeed", "DROPPED"],
-    color: "#f59e0b",
-    threatLevel: 4,
-    description:
-      "DPRK intelligence-linked group targeting foreign policy experts, Korean unification researchers, and nuclear programme information.",
-    sourceUrl: "https://attack.mitre.org/groups/G0094/",
+    aliases: ["Cozy Bear", "Midnight Blizzard", "NOBELIUM", "The Dukes", "Iron Hemlock"],
+    sponsor: "Russia", sponsorFlag: "🇷🇺", agency: "SVR (Foreign Intelligence Service)",
+    active: true, activeSince: "2008", sophistication: 5,
+    motivation: ["Espionage", "Intelligence Collection", "Supply Chain"],
+    primaryTargets: ["Government", "Think Tanks", "Healthcare", "Tech", "Defence"],
+    regions: ["North America", "Europe", "Global"],
+    malwareFamilies: ["SUNBURST", "TEARDROP", "MiniDuke", "CosmicDuke", "WellMess", "BEATDROP"],
+    recentCVEs: ["CVE-2021-26855", "CVE-2021-44228", "CVE-2023-42793"],
+    ttps: ["T1195", "T1566", "T1078", "T1071", "T1027", "T1055", "T1210"],
+    recentOps: [
+      { date: "2024-01", op: "Microsoft corporate email breach via password spray", confidence: "Confirmed" },
+      { date: "2023-10", op: "TeamCity CVE-2023-42793 exploitation targeting CI/CD", confidence: "High" },
+      { date: "2021-12", op: "SolarWinds SUNBURST supply chain compromise", confidence: "Confirmed" },
+    ],
+    color: "#ef4444", attackCount: 0,
   },
   {
     id: "sandworm",
     name: "Sandworm",
-    aliases: ["VOODOO BEAR", "BlackEnergy", "ELECTRUM", "Seashell Blizzard"],
-    sponsor: "Russia",
-    sponsorCode: "RU",
-    sponsorFlag: "🇷🇺",
-    active: true,
-    since: "2009",
-    sectors: ["Energy", "Government", "Critical Infrastructure", "Media"],
-    targets: ["Ukraine", "USA", "EU", "NATO"],
-    techniques: ["T1486", "T1561", "T1059", "T1190", "T1499"],
-    malwareFamilies: ["BlackEnergy", "Industroyer", "NotPetya", "WhisperGate"],
-    color: "#ef4444",
-    threatLevel: 5,
-    description:
-      "GRU Unit 74455. Responsible for the most destructive cyberattacks in history including NotPetya and Ukrainian power grid attacks.",
-    sourceUrl: "https://attack.mitre.org/groups/G0034/",
+    aliases: ["Voodoo Bear", "IRIDIUM", "Seashell Blizzard", "TeleBots", "BlackEnergy"],
+    sponsor: "Russia", sponsorFlag: "🇷🇺", agency: "GRU Unit 74455",
+    active: true, activeSince: "2009", sophistication: 5,
+    motivation: ["Sabotage", "Destruction", "Disruption", "Espionage"],
+    primaryTargets: ["Critical Infrastructure", "Energy", "Government", "Media"],
+    regions: ["Ukraine", "Europe", "Global"],
+    malwareFamilies: ["NotPetya", "Industroyer", "BlackEnergy", "KillDisk", "CaddyWiper", "Prestige"],
+    recentCVEs: ["CVE-2022-41328", "CVE-2021-31979"],
+    ttps: ["T1561", "T1485", "T1489", "T1529", "T1071", "T1190"],
+    recentOps: [
+      { date: "2024-02", op: "Mandiant-linked attacks on Ukrainian water utilities", confidence: "High" },
+      { date: "2022-04", op: "Industroyer2 targeting Ukrainian power grid", confidence: "Confirmed" },
+      { date: "2017-06", op: "NotPetya — $10bn global destructive wiper", confidence: "Confirmed" },
+    ],
+    color: "#ef4444", attackCount: 0,
   },
   {
-    id: "charcoal-typhoon",
-    name: "Charcoal Typhoon",
-    aliases: ["CHROMIUM", "ControlX"],
-    sponsor: "China",
-    sponsorCode: "CN",
-    sponsorFlag: "🇨🇳",
-    active: true,
-    since: "2021",
-    sectors: ["Government", "Technology", "Telecom"],
-    targets: ["Taiwan", "USA", "Southeast Asia"],
-    techniques: ["T1190", "T1133", "T1059", "T1071"],
-    malwareFamilies: ["CobaltStrike", "ShadowPad"],
-    color: "#38bdf8",
-    threatLevel: 4,
-    description:
-      "China-nexus group targeting government and technology sectors in Taiwan and Southeast Asia.",
-    sourceUrl:
-      "https://www.microsoft.com/en-us/security/blog/tag/threat-intelligence/",
+    id: "apt40",
+    name: "APT40",
+    aliases: ["BRONZE MOHAWK", "Leviathan", "TEMP.Periscope", "Kryptonite Panda"],
+    sponsor: "China", sponsorFlag: "🇨🇳", agency: "MSS Hainan State Security Department",
+    active: true, activeSince: "2013", sophistication: 4,
+    motivation: ["Espionage", "IP Theft", "Maritime Intelligence"],
+    primaryTargets: ["Maritime", "Defence", "Aviation", "Government", "Universities"],
+    regions: ["Asia-Pacific", "Europe", "North America"],
+    malwareFamilies: ["AIRBREAK", "FRESHAIR", "BADFLICK", "MURKYTOP", "ScanBox"],
+    recentCVEs: ["CVE-2021-26855", "CVE-2021-31207", "CVE-2020-1472"],
+    ttps: ["T1190", "T1078", "T1566", "T1071", "T1210", "T1036"],
+    recentOps: [
+      { date: "2024-07", op: "ASD/CISA advisory on exploitation of SOHO routers", confidence: "Confirmed" },
+      { date: "2023-05", op: "Pacific defence contractor spear-phishing", confidence: "High" },
+      { date: "2021-03", op: "Microsoft Exchange ProxyLogon mass exploitation", confidence: "High" },
+    ],
+    color: "#f97316", attackCount: 0,
   },
   {
-    id: "muddywater",
-    name: "MuddyWater",
-    aliases: ["MERCURY", "Static Kitten", "Seedworm"],
-    sponsor: "Iran",
-    sponsorCode: "IR",
-    sponsorFlag: "🇮🇷",
-    active: true,
-    since: "2017",
-    sectors: ["Government", "Telecom", "Defence", "Oil & Gas"],
-    targets: ["Middle East", "Turkey", "Pakistan", "Europe"],
-    techniques: ["T1566", "T1059", "T1078", "T1071", "T1027"],
-    malwareFamilies: ["POWERSTATS", "Mori", "EVILNUM", "SloughRAT"],
-    color: "#10b981",
-    threatLevel: 4,
-    description:
-      "MOIS-linked group conducting cyber espionage against Middle Eastern governments and telecoms.",
-    sourceUrl: "https://attack.mitre.org/groups/G0069/",
+    id: "apt41",
+    name: "APT41",
+    aliases: ["Double Dragon", "Winnti", "Barium", "Axiom", "Wicked Panda"],
+    sponsor: "China", sponsorFlag: "🇨🇳", agency: "MSS / Chengdu 404 Network Technology",
+    active: true, activeSince: "2012", sophistication: 5,
+    motivation: ["Espionage", "Financial Gain", "IP Theft"],
+    primaryTargets: ["Healthcare", "Tech", "Telecom", "Finance", "Gaming"],
+    regions: ["Global"],
+    malwareFamilies: ["MESSAGETAP", "HIGHNOON", "DUSTPAN", "KEYPLUG", "Speculoos"],
+    recentCVEs: ["CVE-2021-44207", "CVE-2020-10189", "CVE-2019-3396"],
+    ttps: ["T1195", "T1078", "T1027", "T1055", "T1059", "T1566"],
+    recentOps: [
+      { date: "2024-03", op: "KEYPLUG malware deployment against Asian telcos", confidence: "High" },
+      { date: "2023-09", op: "Stealth operations in US healthcare and tech", confidence: "Medium" },
+      { date: "2020-08", op: "DOJ indicted 5 members — 100+ victims across 3 continents", confidence: "Confirmed" },
+    ],
+    color: "#f97316", attackCount: 0,
+  },
+  {
+    id: "apt10",
+    name: "APT10",
+    aliases: ["MenuPass", "Stone Panda", "POTASSIUM", "Bronze Riverside"],
+    sponsor: "China", sponsorFlag: "🇨🇳", agency: "MSS Tianjin State Security Bureau",
+    active: true, activeSince: "2009", sophistication: 4,
+    motivation: ["Espionage", "IP Theft", "Managed Service Provider Targeting"],
+    primaryTargets: ["MSPs", "Healthcare", "Government", "Defence", "Finance"],
+    regions: ["North America", "Europe", "Asia-Pacific"],
+    malwareFamilies: ["PlugX", "RedLeaves", "QuasarRAT", "UPPERCUT"],
+    recentCVEs: ["CVE-2023-27997", "CVE-2022-40684"],
+    ttps: ["T1199", "T1078", "T1027", "T1071", "T1059"],
+    recentOps: [
+      { date: "2024-02", op: "Fortinet VPN zero-day targeting APAC governments", confidence: "High" },
+      { date: "2023-01", op: "Healthcare sector espionage across US and EU", confidence: "Medium" },
+    ],
+    color: "#f97316", attackCount: 0,
+  },
+  {
+    id: "lazarus",
+    name: "Lazarus Group",
+    aliases: ["HIDDEN COBRA", "Guardians of Peace", "ZINC", "Diamond Sleet", "Labyrinth Chollima"],
+    sponsor: "North Korea", sponsorFlag: "🇰🇵", agency: "RGB Bureau 121",
+    active: true, activeSince: "2009", sophistication: 5,
+    motivation: ["Financial Gain", "Sanctions Evasion", "Espionage"],
+    primaryTargets: ["Cryptocurrency", "Finance", "Defence", "Media", "Aerospace"],
+    regions: ["Global"],
+    malwareFamilies: ["WannaCry", "ELECTRICFISH", "HOPLIGHT", "DTrack", "BLINDINGCAN", "AppleJeus"],
+    recentCVEs: ["CVE-2022-0609", "CVE-2021-44228"],
+    ttps: ["T1566", "T1059", "T1055", "T1078", "T1036", "T1071", "T1140"],
+    recentOps: [
+      { date: "2024-01", op: "$600M Ronin Bridge cryptocurrency heist attribution", confidence: "Confirmed" },
+      { date: "2023-11", op: "macOS supply chain via fake crypto job offers (3CX)", confidence: "High" },
+      { date: "2017-05", op: "WannaCry global ransomworm — 200K victims", confidence: "Confirmed" },
+    ],
+    color: "#a855f7", attackCount: 0,
+  },
+  {
+    id: "kimsuky",
+    name: "Kimsuky",
+    aliases: ["Velvet Chollima", "Black Banshee", "Thallium", "ARCHIPELAGO"],
+    sponsor: "North Korea", sponsorFlag: "🇰🇵", agency: "RGB Reconnaissance General Bureau",
+    active: true, activeSince: "2012", sophistication: 4,
+    motivation: ["Espionage", "Policy Intelligence", "Sanctions Intel"],
+    primaryTargets: ["Government", "Think Tanks", "Universities", "Media", "Nuclear"],
+    regions: ["South Korea", "USA", "Europe", "Japan"],
+    malwareFamilies: ["BabyShark", "AppleSeed", "FlowerPower", "GoldDragon", "RandomQuery"],
+    recentCVEs: ["CVE-2022-30190", "CVE-2021-26855"],
+    ttps: ["T1566", "T1078", "T1059", "T1027", "T1071"],
+    recentOps: [
+      { date: "2024-01", op: "AI chatbot-themed phishing targeting Korean government", confidence: "High" },
+      { date: "2023-07", op: "Nuclear think tank and defence researcher targeting", confidence: "High" },
+    ],
+    color: "#a855f7", attackCount: 0,
   },
   {
     id: "apt33",
     name: "APT33",
-    aliases: ["Elfin", "HOLMIUM", "Refined Kitten"],
-    sponsor: "Iran",
-    sponsorCode: "IR",
-    sponsorFlag: "🇮🇷",
-    active: true,
-    since: "2013",
-    sectors: ["Aerospace", "Energy", "Petrochemical", "Defence"],
-    targets: ["Saudi Arabia", "USA", "South Korea", "UAE"],
-    techniques: ["T1566", "T1078", "T1059", "T1486", "T1190"],
-    malwareFamilies: ["DROPSHOT", "SHAPESHIFT", "TURNEDUP", "DistTrack"],
-    color: "#10b981",
-    threatLevel: 4,
-    description:
-      "IRGC-linked group targeting aviation, petrochemical, and energy sectors. Known for destructive wiper attacks.",
-    sourceUrl: "https://attack.mitre.org/groups/G0064/",
+    aliases: ["Elfin", "Refined Kitten", "HOLMIUM", "Peach Sandstorm"],
+    sponsor: "Iran", sponsorFlag: "🇮🇷", agency: "IRGC",
+    active: true, activeSince: "2013", sophistication: 4,
+    motivation: ["Espionage", "Sabotage", "Regional Dominance"],
+    primaryTargets: ["Aerospace", "Defence", "Petrochemical", "Government"],
+    regions: ["Middle East", "USA", "Europe"],
+    malwareFamilies: ["SHAPESHIFT", "TURNEDUP", "NANOCORE", "NETWIRE", "Dropshot"],
+    recentCVEs: ["CVE-2023-33246", "CVE-2022-47966"],
+    ttps: ["T1566", "T1078", "T1059", "T1071", "T1036"],
+    recentOps: [
+      { date: "2023-09", op: "Password spray against US defence and satellite orgs", confidence: "Confirmed" },
+      { date: "2023-02", op: "Zoho ManageEngine exploitation targeting US pharma", confidence: "High" },
+    ],
+    color: "#10b981", attackCount: 0,
+  },
+  {
+    id: "apt34",
+    name: "APT34",
+    aliases: ["OilRig", "Helix Kitten", "IRN2", "CHRYSENE", "Crambus"],
+    sponsor: "Iran", sponsorFlag: "🇮🇷", agency: "Ministry of Intelligence (MOIS)",
+    active: true, activeSince: "2014", sophistication: 4,
+    motivation: ["Espionage", "Intelligence Collection"],
+    primaryTargets: ["Government", "Finance", "Energy", "Telecom", "Chemical"],
+    regions: ["Middle East", "Europe", "North America"],
+    malwareFamilies: ["POWRUNER", "BONDUPDATER", "RDAT", "DNSpionage", "SideTwist"],
+    recentCVEs: ["CVE-2024-21887", "CVE-2023-35078"],
+    ttps: ["T1566", "T1071", "T1059", "T1027", "T1078", "T1210"],
+    recentOps: [
+      { date: "2024-01", op: "Ivanti VPN zero-day exploitation against Middle East govts", confidence: "High" },
+      { date: "2023-08", op: "Ivanti EPMM exploitation targeting European govts", confidence: "High" },
+    ],
+    color: "#10b981", attackCount: 0,
+  },
+  {
+    id: "muddywater",
+    name: "MuddyWater",
+    aliases: ["Static Kitten", "MERCURY", "Seedworm", "Mango Sandstorm"],
+    sponsor: "Iran", sponsorFlag: "🇮🇷", agency: "MOIS",
+    active: true, activeSince: "2017", sophistication: 3,
+    motivation: ["Espionage", "Ransomware Support", "Intelligence"],
+    primaryTargets: ["Government", "Telecom", "Defence", "Universities"],
+    regions: ["Middle East", "South Asia", "Europe", "North America"],
+    malwareFamilies: ["POWERSTATS", "SHARPSTATS", "BugSleep", "MuddyC3", "PhonyC2"],
+    recentCVEs: ["CVE-2023-27350", "CVE-2021-34473"],
+    ttps: ["T1566", "T1059", "T1027", "T1071", "T1078"],
+    recentOps: [
+      { date: "2024-01", op: "BugSleep backdoor targeting Middle East governments", confidence: "High" },
+      { date: "2023-06", op: "PhonyC2 framework upgrade — Israeli targets", confidence: "Confirmed" },
+    ],
+    color: "#10b981", attackCount: 0,
+  },
+  {
+    id: "charcoal-typhoon",
+    name: "Charcoal Typhoon",
+    aliases: ["CHROMIUM", "ControlX", "BRONZE ATLAS"],
+    sponsor: "China", sponsorFlag: "🇨🇳", agency: "MSS",
+    active: true, activeSince: "2016", sophistication: 4,
+    motivation: ["Espionage", "Influence Operations", "AI Theft"],
+    primaryTargets: ["AI Research", "Education", "Think Tanks", "Government"],
+    regions: ["Global"],
+    malwareFamilies: ["ShadowPad", "PlugX", "Cobalt Strike"],
+    recentCVEs: ["CVE-2023-27997"],
+    ttps: ["T1566", "T1078", "T1059", "T1071", "T1027"],
+    recentOps: [
+      { date: "2024-02", op: "Microsoft AI research infrastructure probing", confidence: "Medium" },
+      { date: "2023-11", op: "OpenAI and academic AI lab targeting", confidence: "Medium" },
+    ],
+    color: "#f97316", attackCount: 0,
+  },
+  {
+    id: "volt-typhoon",
+    name: "Volt Typhoon",
+    aliases: ["BRONZE SILHOUETTE", "Vanguard Panda", "KV Botnet"],
+    sponsor: "China", sponsorFlag: "🇨🇳", agency: "PLA / MSS",
+    active: true, activeSince: "2021", sophistication: 5,
+    motivation: ["Pre-positioning", "Sabotage", "Critical Infrastructure"],
+    primaryTargets: ["Critical Infrastructure", "Military", "Utilities", "Transport", "Communications"],
+    regions: ["USA", "Guam", "Pacific"],
+    malwareFamilies: ["KV-botnet", "living-off-the-land"],
+    recentCVEs: ["CVE-2023-27997", "CVE-2024-3400"],
+    ttps: ["T1190", "T1078", "T1036", "T1071", "T1027", "T1133"],
+    recentOps: [
+      { date: "2024-02", op: "CISA emergency directive — US critical infrastructure pre-positioning", confidence: "Confirmed" },
+      { date: "2024-01", op: "KV-Botnet dismantled by FBI — SOHO routers compromised", confidence: "Confirmed" },
+      { date: "2023-05", op: "Guam military infrastructure infiltration", confidence: "Confirmed" },
+    ],
+    color: "#f97316", attackCount: 0,
+  },
+  {
+    id: "salt-typhoon",
+    name: "Salt Typhoon",
+    aliases: ["GhostEmperor", "FamousSparrow", "UNC2286"],
+    sponsor: "China", sponsorFlag: "🇨🇳", agency: "MSS",
+    active: true, activeSince: "2019", sophistication: 5,
+    motivation: ["Espionage", "Lawful Intercept Abuse", "Telecom Surveillance"],
+    primaryTargets: ["Telecom", "ISPs", "Government", "Law Enforcement Systems"],
+    regions: ["USA", "Europe", "Asia"],
+    malwareFamilies: ["GhostSpider", "MASOL RAT", "Demodex"],
+    recentCVEs: ["CVE-2023-0669", "CVE-2024-3400"],
+    ttps: ["T1190", "T1078", "T1071", "T1557", "T1040"],
+    recentOps: [
+      { date: "2024-12", op: "9 US telecom carriers breached — wiretap system access", confidence: "Confirmed" },
+      { date: "2024-10", op: "AT&T and Verizon lawful intercept infrastructure accessed", confidence: "Confirmed" },
+      { date: "2024-03", op: "Southeast Asia telecom infiltration via Cisco IOS-XE", confidence: "High" },
+    ],
+    color: "#f97316", attackCount: 0,
+  },
+  {
+    id: "unc3944",
+    name: "Scattered Spider",
+    aliases: ["UNC3944", "Roasted 0ktapus", "Starfraud", "Scatter Swine"],
+    sponsor: "Criminal", sponsorFlag: "🌐", agency: "Financially Motivated Cybercriminal Group",
+    active: true, activeSince: "2022", sophistication: 4,
+    motivation: ["Financial Gain", "Extortion", "Data Theft"],
+    primaryTargets: ["Hospitality", "Gaming", "Telecom", "Finance", "Retail"],
+    regions: ["USA", "UK", "Global"],
+    malwareFamilies: ["BlackCat/ALPHV", "Qilin", "ScreenConnect"],
+    recentCVEs: ["CVE-2023-27532", "CVE-2023-22515"],
+    ttps: ["T1566", "T1078", "T1621", "T1556", "T1059"],
+    recentOps: [
+      { date: "2024-01", op: "Qilin ransomware deployment against UK healthcare", confidence: "High" },
+      { date: "2023-09", op: "MGM Resorts $100M ransomware attack", confidence: "Confirmed" },
+      { date: "2023-09", op: "Caesars Entertainment — $15M ransom paid", confidence: "Confirmed" },
+    ],
+    color: "#94a3b8", attackCount: 0,
+  },
+  {
+    id: "apt37",
+    name: "APT37",
+    aliases: ["Reaper", "ScarCruft", "Group123", "Ricochet Chollima"],
+    sponsor: "North Korea", sponsorFlag: "🇰🇵", agency: "Ministry of State Security (MSS DPRK)",
+    active: true, activeSince: "2012", sophistication: 4,
+    motivation: ["Espionage", "Defector Tracking", "Intelligence"],
+    primaryTargets: ["Defectors", "Journalists", "Government", "Human Rights"],
+    regions: ["South Korea", "Japan", "Vietnam", "Middle East"],
+    malwareFamilies: ["ROKRAT", "POORAIM", "SHUTTERSPEED", "DOGCALL"],
+    recentCVEs: ["CVE-2022-41128", "CVE-2021-26411"],
+    ttps: ["T1566", "T1059", "T1027", "T1071"],
+    recentOps: [
+      { date: "2024-01", op: "Cloud-based C2 via Dropbox and Yandex targeting defectors", confidence: "High" },
+      { date: "2023-07", op: "IE zero-day (CVE-2022-41128) against Korean press", confidence: "Confirmed" },
+    ],
+    color: "#a855f7", attackCount: 0,
+  },
+  {
+    id: "gamaredon",
+    name: "Gamaredon",
+    aliases: ["Primitive Bear", "Shuckworm", "ACTINIUM", "Trident Ursa"],
+    sponsor: "Russia", sponsorFlag: "🇷🇺", agency: "FSB Centre 18",
+    active: true, activeSince: "2013", sophistication: 3,
+    motivation: ["Espionage", "Data Theft", "Disruption"],
+    primaryTargets: ["Ukraine Government", "Military", "NGOs", "Law Enforcement"],
+    regions: ["Ukraine"],
+    malwareFamilies: ["Pterodo", "EvilGnome", "PowerPunch", "QuietSieve"],
+    recentCVEs: ["CVE-2017-0199"],
+    ttps: ["T1566", "T1059", "T1071", "T1027"],
+    recentOps: [
+      { date: "2024-02", op: "Pterodo variant targeting Ukrainian military logistics", confidence: "Confirmed" },
+      { date: "2023-11", op: "Mass phishing of Ukrainian government ministries", confidence: "Confirmed" },
+    ],
+    color: "#ef4444", attackCount: 0,
+  },
+  {
+    id: "turla",
+    name: "Turla",
+    aliases: ["Snake", "Uroburos", "Waterbug", "Venomous Bear", "Secret Blizzard"],
+    sponsor: "Russia", sponsorFlag: "🇷🇺", agency: "FSB",
+    active: true, activeSince: "1996", sophistication: 5,
+    motivation: ["Espionage", "Long-term Persistence", "Intelligence"],
+    primaryTargets: ["Embassies", "Government", "Military", "Research"],
+    regions: ["Europe", "Middle East", "Central Asia", "Global"],
+    malwareFamilies: ["Snake/Uroburos", "Carbon", "Kazuar", "TinyTurla", "ComRAT"],
+    recentCVEs: ["CVE-2023-38831"],
+    ttps: ["T1195", "T1078", "T1071", "T1027", "T1055", "T1090"],
+    recentOps: [
+      { date: "2024-05", op: "US/UK/EU disruption of Snake malware network", confidence: "Confirmed" },
+      { date: "2023-09", op: "TinyTurla-NG targeting Polish NGOs", confidence: "Confirmed" },
+    ],
+    color: "#ef4444", attackCount: 0,
+  },
+  {
+    id: "apt30",
+    name: "APT30",
+    aliases: ["Override Panda", "Bronze Bishop"],
+    sponsor: "China", sponsorFlag: "🇨🇳", agency: "PLA",
+    active: true, activeSince: "2005", sophistication: 4,
+    motivation: ["Espionage", "Regional Intelligence"],
+    primaryTargets: ["ASEAN Governments", "Defence", "Journalists", "NGOs"],
+    regions: ["Southeast Asia", "India"],
+    malwareFamilies: ["SHIPSHAPE", "SPACESHIP", "FLASHFLOOD", "BACKBEND"],
+    recentCVEs: [],
+    ttps: ["T1566", "T1059", "T1027", "T1071"],
+    recentOps: [
+      { date: "2023-04", op: "ASEAN government summit intelligence collection", confidence: "Medium" },
+    ],
+    color: "#f97316", attackCount: 0,
+  },
+  {
+    id: "hafnium",
+    name: "HAFNIUM",
+    aliases: ["Silk Typhoon", "Bronze Fondue"],
+    sponsor: "China", sponsorFlag: "🇨🇳", agency: "MSS",
+    active: true, activeSince: "2019", sophistication: 5,
+    motivation: ["Espionage", "IP Theft"],
+    primaryTargets: ["Law Firms", "Defence", "NGOs", "Think Tanks", "Government"],
+    regions: ["USA", "Global"],
+    malwareFamilies: ["CHOPPER", "ASPXSPY", "Covenant", "Nishang"],
+    recentCVEs: ["CVE-2021-26855", "CVE-2021-27065", "CVE-2021-26857"],
+    ttps: ["T1190", "T1059", "T1078", "T1027"],
+    recentOps: [
+      { date: "2024-01", op: "US Treasury breach via BeyondTrust vulnerability", confidence: "High" },
+      { date: "2021-03", op: "Exchange ProxyLogon — 250K+ servers compromised globally", confidence: "Confirmed" },
+    ],
+    color: "#f97316", attackCount: 0,
   },
 ];
 
-const SPONSOR_COLORS: Record<string, string> = {
-  Russia: "#ef4444",
-  China: "#38bdf8",
-  "North Korea": "#f59e0b",
-  Iran: "#10b981",
-};
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const THREAT_LABELS = ["", "LOW", "MODERATE", "ELEVATED", "HIGH", "CRITICAL"];
+function confColor(c: string): string {
+  if (c === "Confirmed") return "#10b981";
+  if (c === "High")      return "#f59e0b";
+  return "#64748b";
+}
 
-export default function APTTracker() {
-  const [selectedGroup, setSelectedGroup] = useState<APTGroup | null>(null);
-  const [filterSponsor, setFilterSponsor] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
+function SophisticationDots({ level, color }: { level: number; color: string }) {
+  return (
+    <span style={{ display: "flex", gap: 3, alignItems: "center" }}>
+      {[1,2,3,4,5].map(i => (
+        <span key={i} style={{
+          width: 7, height: 7, borderRadius: "50%",
+          background: i <= level ? color : "rgba(255,255,255,0.08)",
+          boxShadow: i <= level ? `0 0 4px ${color}80` : "none",
+          display: "inline-block",
+        }} />
+      ))}
+    </span>
+  );
+}
 
-  const { data } = useQuery<{ events: CyberEvent[] }>({
-    queryKey: ["/api/threats/live"],
-    refetchInterval: 5 * 60 * 1000,
+function Tag({ label, color }: { label: string; color: string }) {
+  return (
+    <span style={{
+      fontSize: 8, fontWeight: 700, letterSpacing: "0.08em",
+      padding: "2px 6px", borderRadius: 3,
+      background: `${color}18`, border: `1px solid ${color}30`,
+      color, whiteSpace: "nowrap",
+    }}>{label}</span>
+  );
+}
+
+function ConfBadge({ c }: { c: string }) {
+  const col = confColor(c);
+  return (
+    <span style={{
+      fontSize: 7, fontWeight: 800, letterSpacing: "0.1em",
+      padding: "1px 5px", borderRadius: 2,
+      background: `${col}18`, border: `1px solid ${col}40`,
+      color: col, textTransform: "uppercase" as const,
+    }}>{c}</span>
+  );
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
+export default function AptTracker() {
+  const [search, setSearch]         = useState("");
+  const [sponsor, setSponsor]        = useState<string>("ALL");
+  const [selected, setSelected]      = useState<APTGroup | null>(null);
+
+  const { data: eventsRaw } = useQuery<CyberEvent[]>({
+    queryKey: ["/api/events"],
+    refetchInterval: 30_000,
   });
-  const events = data?.events || [];
+  const events: CyberEvent[] = eventsRaw ?? [];
 
-  const filtered = useMemo(() => {
-    return APT_GROUPS.filter((g) => {
-      if (filterSponsor && g.sponsor !== filterSponsor) return false;
-      if (search) {
-        const s = search.toLowerCase();
-        return (
-          g.name.toLowerCase().includes(s) ||
-          g.aliases.some((a) => a.toLowerCase().includes(s)) ||
-          g.malwareFamilies.some((m) => m.toLowerCase().includes(s))
-        );
-      }
-      return true;
-    });
-  }, [filterSponsor, search]);
-
-  const eventCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
+  // ── Live IOC correlation ──────────────────────────────────────────────────
+  const iocMap = useMemo(() => {
+    const map: Record<string, number> = {};
     for (const g of APT_GROUPS) {
-      counts[g.id] = events.filter((e) =>
-        g.malwareFamilies.some((mf) =>
-          e.malwareFamily?.toLowerCase().includes(mf.toLowerCase())
-        )
-      ).length;
+      const nameSet = new Set([
+        g.name.toLowerCase(),
+        ...g.aliases.map(a => a.toLowerCase()),
+      ]);
+      const mwSet = new Set(g.malwareFamilies.map(m => m.toLowerCase()));
+      let count = 0;
+      for (const ev of events) {
+        const actor = (ev.actor ?? "").toLowerCase();
+        const mw    = (ev.malwareFamily ?? "").toLowerCase();
+        if (nameSet.has(actor) || mwSet.has(mw) || mwSet.has(actor)) count++;
+      }
+      map[g.id] = count;
     }
-    return counts;
+    return map;
   }, [events]);
 
-  const sponsors = Array.from(new Set(APT_GROUPS.map((g) => g.sponsor)));
+  // ── Filters ───────────────────────────────────────────────────────────────
+  const sponsors = ["ALL", "Russia", "China", "North Korea", "Iran", "Criminal"];
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    return APT_GROUPS.filter(g => {
+      const matchSponsor = sponsor === "ALL" || g.sponsor === sponsor;
+      const matchSearch  = !q ||
+        g.name.toLowerCase().includes(q) ||
+        g.aliases.some(a => a.toLowerCase().includes(q)) ||
+        g.malwareFamilies.some(m => m.toLowerCase().includes(q)) ||
+        g.recentCVEs.some(c => c.toLowerCase().includes(q)) ||
+        g.agency.toLowerCase().includes(q);
+      return matchSponsor && matchSearch;
+    });
+  }, [search, sponsor]);
+
+  // ── Stats ─────────────────────────────────────────────────────────────────
+  const totalConfirmed = APT_GROUPS.reduce(
+    (acc, g) => acc + g.recentOps.filter(o => o.confidence === "Confirmed").length, 0
+  );
+  const totalOps = APT_GROUPS.reduce((acc, g) => acc + g.recentOps.length, 0);
+  const liveMatches = Object.values(iocMap).reduce((a, b) => a + b, 0);
+
+  const byNation: Record<string, number> = {};
+  for (const g of APT_GROUPS) byNation[g.sponsor] = (byNation[g.sponsor] ?? 0) + 1;
 
   return (
-    <div
-      style={{
-        width: "100vw",
-        height: "100vh",
-        background: "#050a14",
-        display: "flex",
-        flexDirection: "column",
-        fontFamily: "'Rajdhani', sans-serif",
-        overflow: "hidden",
-      }}
-    >
-      {/* ── Header ── */}
-      <div
-        style={{
-          height: "48px",
-          background: "rgba(6,11,20,0.95)",
-          borderBottom: "1px solid rgba(99,179,237,0.15)",
-          display: "flex",
-          alignItems: "center",
-          padding: "0 16px",
-          gap: "12px",
-          flexShrink: 0,
-        }}
-      >
-        <a
-          href="/"
-          style={{
-            color: "rgba(99,179,237,0.5)",
-            textDecoration: "none",
-            fontSize: "11px",
-            letterSpacing: "0.12em",
-          }}
-        >
-          ← SENTINEL-MAP
-        </a>
-        <div
-          style={{
-            width: "1px",
-            height: "20px",
-            background: "rgba(99,179,237,0.15)",
-          }}
-        />
-        <Crosshair size={14} style={{ color: "#38bdf8" }} />
-        <div
-          style={{
-            fontSize: "14px",
-            fontWeight: 800,
-            letterSpacing: "0.18em",
-            color: "#e2e8f0",
-            textTransform: "uppercase",
-          }}
-        >
-          NATION-STATE APT TRACKER
-        </div>
-        <div
-          style={{
-            padding: "2px 8px",
-            background: "rgba(56,189,248,0.1)",
-            border: "1px solid rgba(56,189,248,0.2)",
-            borderRadius: "4px",
-            fontSize: "9px",
-            fontWeight: 700,
-            letterSpacing: "0.12em",
-            color: "#38bdf8",
-          }}
-        >
-          {APT_GROUPS.filter((g) => g.active).length} ACTIVE GROUPS
-        </div>
+    <div style={{
+      width: "100vw", height: "100vh", background: "#040810",
+      display: "flex", flexDirection: "column",
+      fontFamily: "'Rajdhani', sans-serif", overflow: "hidden",
+    }}>
 
-        {/* Sponsor filter pills */}
-        <div
-          style={{
-            marginLeft: "auto",
-            display: "flex",
-            gap: "6px",
-            alignItems: "center",
-          }}
-        >
-          {sponsors.map((s) => (
-            <button
-              key={s}
-              onClick={() =>
-                setFilterSponsor(filterSponsor === s ? null : s)
-              }
-              style={{
-                padding: "3px 10px",
-                borderRadius: "4px",
-                border: `1px solid ${
-                  SPONSOR_COLORS[s] || "#63b3ed"
-                }${filterSponsor === s ? "" : "40"}`,
-                background:
-                  filterSponsor === s
-                    ? `${SPONSOR_COLORS[s]}20`
-                    : "transparent",
-                color:
-                  filterSponsor === s
-                    ? SPONSOR_COLORS[s]
-                    : "rgba(226,232,240,0.4)",
-                cursor: "pointer",
-                fontSize: "10px",
-                fontWeight: 700,
-                letterSpacing: "0.1em",
-                fontFamily: "'Rajdhani', sans-serif",
-              }}
-            >
-              {s.toUpperCase()}
-            </button>
+      {/* ── HEADER ─────────────────────────────────────────────────────── */}
+      <header style={{
+        height: 48, background: "rgba(4,8,16,0.98)",
+        borderBottom: "1px solid rgba(99,179,237,0.12)",
+        display: "flex", alignItems: "center", padding: "0 18px", gap: 14, flexShrink: 0,
+      }}>
+        <a href="/" style={{
+          color: "rgba(99,179,237,0.4)", textDecoration: "none",
+          fontSize: 10, letterSpacing: "0.14em", fontFamily: "'JetBrains Mono',monospace",
+        }}>← SENTINEL-MAP</a>
+        <div style={{ width: 1, height: 20, background: "rgba(99,179,237,0.1)" }} />
+        <Crosshair size={14} style={{ color: "#ef4444" }} />
+        <span style={{
+          fontSize: 13, fontWeight: 800, letterSpacing: "0.2em",
+          color: "#e2e8f0", textTransform: "uppercase",
+        }}>APT INTELLIGENCE TRACKER</span>
+        {liveMatches > 0 && (
+          <span style={{
+            display: "flex", alignItems: "center", gap: 5,
+            padding: "2px 8px",
+            background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)",
+            borderRadius: 3, fontSize: 8, fontWeight: 800, letterSpacing: "0.14em", color: "#ef4444",
+          }}>
+            <span style={{
+              width: 5, height: 5, borderRadius: "50%", background: "#ef4444",
+              display: "inline-block", animation: "livePulse 1s ease-in-out infinite",
+            }} />
+            {liveMatches} LIVE IOC MATCHES
+          </span>
+        )}
+        <span style={{
+          marginLeft: "auto", fontSize: 9, color: "rgba(226,232,240,0.25)",
+          fontFamily: "'JetBrains Mono',monospace",
+        }}>
+          {APT_GROUPS.length} GROUPS TRACKED
+        </span>
+      </header>
+
+      {/* ── STATS BAR ──────────────────────────────────────────────────── */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 0,
+        borderBottom: "1px solid rgba(99,179,237,0.06)",
+        background: "rgba(4,8,16,0.9)", flexShrink: 0,
+      }}>
+        {[
+          { label: "Total Groups",     value: APT_GROUPS.length,    color: "#63b3ed" },
+          { label: "Active",            value: APT_GROUPS.filter(g => g.active).length, color: "#10b981" },
+          { label: "Tracked Ops",       value: totalOps,             color: "#f59e0b" },
+          { label: "Confirmed Ops",     value: totalConfirmed,       color: "#ef4444" },
+          { label: "Live Feed Matches", value: liveMatches,          color: "#a855f7" },
+        ].map((s, i) => (
+          <div key={i} style={{
+            flex: 1, padding: "8px 16px",
+            borderRight: "1px solid rgba(99,179,237,0.05)",
+            display: "flex", flexDirection: "column", gap: 2,
+          }}>
+            <span style={{ fontSize: 18, fontWeight: 900, color: s.color, lineHeight: 1 }}>{s.value}</span>
+            <span style={{ fontSize: 8, color: "rgba(226,232,240,0.3)", letterSpacing: "0.12em", textTransform: "uppercase" }}>{s.label}</span>
+          </div>
+        ))}
+        <div style={{
+          flex: 3, padding: "6px 16px",
+          display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" as const,
+        }}>
+          {Object.entries(byNation).map(([nat, cnt]) => (
+            <span key={nat} style={{
+              fontSize: 9, color: SPONSOR_COLOR[nat] ?? "#94a3b8",
+              fontWeight: 700, letterSpacing: "0.06em",
+            }}>{nat} <span style={{ opacity: 0.5 }}>×{cnt}</span></span>
           ))}
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search groups..."
-            style={{
-              background: "rgba(6,11,20,0.8)",
-              border: "1px solid rgba(99,179,237,0.15)",
-              borderRadius: "6px",
-              padding: "4px 10px",
-              color: "#e2e8f0",
-              fontSize: "11px",
-              fontFamily: "'JetBrains Mono', monospace",
-              outline: "none",
-              width: "160px",
-            }}
-          />
         </div>
       </div>
 
-      {/* ── Main layout ── */}
-      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-        {/* APT Group list */}
-        <div
-          style={{
-            width: selectedGroup ? "420px" : "100%",
-            flexShrink: 0,
-            overflowY: "auto",
-            padding: "16px",
-            display: "grid",
-            gridTemplateColumns: selectedGroup
-              ? "1fr"
-              : "repeat(auto-fill, minmax(360px, 1fr))",
-            gap: "12px",
-            alignContent: "start",
-          }}
-        >
-          {filtered.map((group) => (
-            <div
-              key={group.id}
-              onClick={() =>
-                setSelectedGroup(
-                  selectedGroup?.id === group.id ? null : group
-                )
-              }
-              style={{
-                background:
-                  selectedGroup?.id === group.id
-                    ? `${group.color}08`
-                    : "rgba(6,11,20,0.7)",
-                border: `1px solid ${
-                  selectedGroup?.id === group.id
-                    ? group.color + "40"
-                    : "rgba(99,179,237,0.1)"
-                }`,
-                borderRadius: "10px",
-                padding: "16px",
-                cursor: "pointer",
-                transition: "all 0.2s ease",
-                boxShadow:
-                  selectedGroup?.id === group.id
-                    ? `0 0 20px ${group.color}15`
-                    : "none",
-              }}
-            >
-              {/* Card header */}
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: "12px",
-                  marginBottom: "10px",
-                }}
-              >
-                <div style={{ fontSize: "28px", lineHeight: 1 }}>
-                  {group.sponsorFlag}
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      marginBottom: "3px",
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: "15px",
-                        fontWeight: 800,
-                        color: group.color,
-                        letterSpacing: "0.06em",
-                      }}
-                    >
-                      {group.name}
-                    </span>
-                    {group.active && (
-                      <span
-                        style={{
-                          padding: "1px 6px",
-                          background: "rgba(16,185,129,0.12)",
-                          border: "1px solid rgba(16,185,129,0.25)",
-                          borderRadius: "3px",
-                          fontSize: "8px",
-                          color: "#10b981",
-                          fontWeight: 700,
-                          letterSpacing: "0.1em",
-                        }}
-                      >
-                        ACTIVE
-                      </span>
-                    )}
-                    {eventCounts[group.id] > 0 && (
-                      <span
-                        style={{
-                          padding: "1px 6px",
-                          background: `${group.color}15`,
-                          border: `1px solid ${group.color}30`,
-                          borderRadius: "3px",
-                          fontSize: "8px",
-                          color: group.color,
-                          fontWeight: 700,
-                        }}
-                      >
-                        {eventCounts[group.id]} LIVE IOCs
-                      </span>
-                    )}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "10px",
-                      color: "rgba(226,232,240,0.35)",
-                      letterSpacing: "0.06em",
-                    }}
-                  >
-                    {group.aliases.slice(0, 3).join(" · ")}
-                  </div>
-                </div>
-                {/* Threat level dots */}
-                <div style={{ textAlign: "right" }}>
-                  <div
-                    style={{
-                      fontSize: "9px",
-                      color: "rgba(226,232,240,0.3)",
-                      letterSpacing: "0.1em",
-                      marginBottom: "4px",
-                    }}
-                  >
-                    THREAT
-                  </div>
-                  <div style={{ display: "flex", gap: "2px" }}>
-                    {[1, 2, 3, 4, 5].map((i) => (
-                      <div
-                        key={i}
-                        style={{
-                          width: "8px",
-                          height: "8px",
-                          borderRadius: "2px",
-                          background:
-                            i <= group.threatLevel
-                              ? group.color
-                              : "rgba(99,179,237,0.1)",
-                          boxShadow:
-                            i <= group.threatLevel
-                              ? `0 0 4px ${group.color}`
-                              : "none",
-                        }}
-                      />
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Description */}
-              <p
-                style={{
-                  fontSize: "11px",
-                  color: "rgba(226,232,240,0.45)",
-                  lineHeight: 1.5,
-                  marginBottom: "10px",
-                  fontFamily: "'JetBrains Mono', monospace",
-                }}
-              >
-                {group.description}
-              </p>
-
-              {/* Sector tags */}
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: "4px",
-                  marginBottom: "8px",
-                }}
-              >
-                {group.sectors.map((s) => (
-                  <span
-                    key={s}
-                    style={{
-                      padding: "2px 7px",
-                      background: "rgba(99,179,237,0.06)",
-                      border: "1px solid rgba(99,179,237,0.12)",
-                      borderRadius: "4px",
-                      fontSize: "9px",
-                      color: "rgba(99,179,237,0.6)",
-                      letterSpacing: "0.08em",
-                    }}
-                  >
-                    {s}
-                  </span>
-                ))}
-              </div>
-
-              {/* Malware families */}
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
-                {group.malwareFamilies.map((m) => (
-                  <span
-                    key={m}
-                    style={{
-                      padding: "2px 7px",
-                      background: `${group.color}10`,
-                      border: `1px solid ${group.color}25`,
-                      borderRadius: "4px",
-                      fontSize: "9px",
-                      color: group.color,
-                      fontFamily: "'JetBrains Mono', monospace",
-                    }}
-                  >
-                    {m}
-                  </span>
-                ))}
-              </div>
-
-              {/* Footer */}
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginTop: "10px",
-                  paddingTop: "8px",
-                  borderTop: "1px solid rgba(99,179,237,0.06)",
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: "9px",
-                    color: "rgba(226,232,240,0.25)",
-                    fontFamily: "'JetBrains Mono', monospace",
-                  }}
-                >
-                  Since {group.since} · {group.sponsor}
-                </div>
-                <a
-                  href={group.sourceUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  style={{
-                    fontSize: "9px",
-                    color: "rgba(99,179,237,0.4)",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "3px",
-                    textDecoration: "none",
-                  }}
-                >
-                  MITRE ATT&amp;CK <ExternalLink size={9} />
-                </a>
-              </div>
-            </div>
-          ))}
+      {/* ── CONTROLS ───────────────────────────────────────────────────── */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8, padding: "8px 14px",
+        borderBottom: "1px solid rgba(99,179,237,0.06)",
+        background: "rgba(4,8,16,0.85)", flexShrink: 0, flexWrap: "wrap" as const,
+      }}>
+        {/* sponsor filter */}
+        <div style={{ display: "flex", gap: 4 }}>
+          {sponsors.map(s => {
+            const col = s === "ALL" ? "#63b3ed" : (SPONSOR_COLOR[s] ?? "#94a3b8");
+            const on  = sponsor === s;
+            return (
+              <button key={s} onClick={() => setSponsor(s)} style={{
+                padding: "4px 10px", borderRadius: 5,
+                border: `1px solid ${on ? col + "50" : "rgba(99,179,237,0.07)"}`,
+                background: on ? `${col}14` : "transparent",
+                color: on ? col : "rgba(226,232,240,0.3)",
+                cursor: "pointer", fontSize: 9, fontWeight: 800,
+                letterSpacing: "0.1em", fontFamily: "'Rajdhani',sans-serif",
+                boxShadow: on ? `0 0 12px ${col}18` : "none",
+              }}>{s}</button>
+            );
+          })}
         </div>
 
-        {/* ── Detail panel ── */}
-        {selectedGroup && (
-          <div
+        {/* search */}
+        <div style={{
+          marginLeft: "auto", display: "flex", alignItems: "center", gap: 6,
+          background: "rgba(99,179,237,0.04)",
+          border: "1px solid rgba(99,179,237,0.1)",
+          borderRadius: 6, padding: "4px 10px",
+        }}>
+          <Search size={11} style={{ color: "rgba(99,179,237,0.4)" }} />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search group, alias, malware, CVE…"
             style={{
-              flex: 1,
-              overflowY: "auto",
-              borderLeft: "1px solid rgba(99,179,237,0.1)",
-              padding: "20px",
+              background: "transparent", border: "none", outline: "none",
+              color: "#e2e8f0", fontSize: 10, width: 220,
+              fontFamily: "'Rajdhani',sans-serif", letterSpacing: "0.04em",
             }}
-          >
-            {/* Panel header */}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                marginBottom: "20px",
-              }}
-            >
+          />
+          {search && (
+            <button onClick={() => setSearch("")} style={{
+              background: "none", border: "none", cursor: "pointer",
+              color: "rgba(226,232,240,0.3)", padding: 0, lineHeight: 1,
+            }}>✕</button>
+          )}
+        </div>
+
+        <span style={{ fontSize: 9, color: "rgba(226,232,240,0.2)", fontFamily: "'JetBrains Mono',monospace" }}>
+          {filtered.length} / {APT_GROUPS.length}
+        </span>
+      </div>
+
+      {/* ── BODY (card grid + detail panel) ────────────────────────────── */}
+      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+
+        {/* CARD GRID */}
+        <div style={{
+          flex: 1, overflowY: "auto", padding: 14,
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(310px, 1fr))",
+          gap: 10, alignContent: "start",
+        }}>
+          {filtered.map(g => {
+            const liveCount = iocMap[g.id] ?? 0;
+            const accentCol = SPONSOR_COLOR[g.sponsor] ?? g.color;
+            return (
               <div
+                key={g.id}
+                onClick={() => setSelected(selected?.id === g.id ? null : g)}
                 style={{
-                  fontSize: "22px",
-                  fontWeight: 800,
-                  color: selectedGroup.color,
-                  letterSpacing: "0.1em",
-                }}
-              >
-                {selectedGroup.name}
-              </div>
-              <button
-                onClick={() => setSelectedGroup(null)}
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  color: "rgba(226,232,240,0.3)",
+                  background: selected?.id === g.id
+                    ? `${accentCol}0c`
+                    : "rgba(6,11,20,0.85)",
+                  border: `1px solid ${selected?.id === g.id ? accentCol + "40" : accentCol + "18"}`,
+                  borderLeft: `3px solid ${accentCol}`,
+                  borderRadius: "0 8px 8px 0",
+                  padding: "12px 14px",
                   cursor: "pointer",
-                  fontSize: "18px",
+                  transition: "all 0.15s",
+                  position: "relative" as const,
                 }}
               >
-                ✕
-              </button>
-            </div>
-
-            {/* Stats grid */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: "10px",
-                marginBottom: "20px",
-              }}
-            >
-              {[
-                {
-                  label: "SPONSOR",
-                  value: `${selectedGroup.sponsorFlag} ${selectedGroup.sponsor}`,
-                },
-                { label: "ACTIVE SINCE", value: selectedGroup.since },
-                {
-                  label: "THREAT LEVEL",
-                  value: THREAT_LABELS[selectedGroup.threatLevel],
-                },
-                {
-                  label: "LIVE IOCs",
-                  value: String(eventCounts[selectedGroup.id] || 0),
-                },
-              ].map((item) => (
-                <div
-                  key={item.label}
-                  style={{
-                    background: "rgba(6,11,20,0.8)",
-                    border: "1px solid rgba(99,179,237,0.1)",
-                    borderRadius: "8px",
-                    padding: "12px",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: "8px",
-                      fontWeight: 700,
-                      letterSpacing: "0.14em",
-                      color: "rgba(99,179,237,0.4)",
-                      marginBottom: "4px",
-                    }}
-                  >
-                    {item.label}
+                {/* card header */}
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 8 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+                      <span style={{
+                        fontSize: 14, fontWeight: 900, color: "#e2e8f0",
+                        letterSpacing: "0.06em",
+                      }}>{g.name}</span>
+                      <span style={{ fontSize: 16 }}>{g.sponsorFlag}</span>
+                      {g.active && (
+                        <span style={{
+                          width: 5, height: 5, borderRadius: "50%", background: "#10b981",
+                          display: "inline-block", boxShadow: "0 0 5px #10b981",
+                          animation: "livePulse 2s ease-in-out infinite",
+                        }} />
+                      )}
+                      {liveCount > 0 && (
+                        <span style={{
+                          fontSize: 7, fontWeight: 800, letterSpacing: "0.1em",
+                          padding: "1px 5px", borderRadius: 2,
+                          background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.4)",
+                          color: "#ef4444",
+                        }}>⚡ {liveCount} IOC</span>
+                      )}
+                    </div>
+                    <div style={{
+                      fontSize: 8, color: "rgba(226,232,240,0.35)",
+                      letterSpacing: "0.06em", fontFamily: "'JetBrains Mono',monospace",
+                    }}>{g.agency} · since {g.activeSince}</div>
                   </div>
-                  <div
-                    style={{
-                      fontSize: "16px",
-                      fontWeight: 700,
-                      color: "#e2e8f0",
-                    }}
-                  >
-                    {item.value}
+                  <div style={{ display: "flex", flexDirection: "column" as const, alignItems: "flex-end", gap: 4 }}>
+                    <SophisticationDots level={g.sophistication} color={accentCol} />
+                    <span style={{
+                      fontSize: 7, color: "rgba(226,232,240,0.25)", letterSpacing: "0.08em",
+                    }}>TIER {g.sophistication}</span>
                   </div>
                 </div>
-              ))}
-            </div>
 
-            {/* Aliases */}
-            <div style={{ marginBottom: "16px" }}>
-              <div
-                style={{
-                  fontSize: "9px",
-                  fontWeight: 700,
-                  letterSpacing: "0.14em",
-                  color: "rgba(99,179,237,0.4)",
-                  marginBottom: "8px",
-                }}
-              >
-                KNOWN ALIASES
-              </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                {selectedGroup.aliases.map((a) => (
-                  <span
-                    key={a}
-                    style={{
-                      padding: "3px 8px",
-                      background: "rgba(99,179,237,0.06)",
-                      border: "1px solid rgba(99,179,237,0.15)",
-                      borderRadius: "4px",
-                      fontSize: "10px",
-                      color: "rgba(226,232,240,0.6)",
-                    }}
-                  >
-                    {a}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            {/* Target countries */}
-            <div style={{ marginBottom: "16px" }}>
-              <div
-                style={{
-                  fontSize: "9px",
-                  fontWeight: 700,
-                  letterSpacing: "0.14em",
-                  color: "rgba(99,179,237,0.4)",
-                  marginBottom: "8px",
-                }}
-              >
-                TARGET COUNTRIES
-              </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                {selectedGroup.targets.map((t) => (
-                  <span
-                    key={t}
-                    style={{
-                      padding: "3px 8px",
-                      background: "rgba(239,68,68,0.06)",
-                      border: "1px solid rgba(239,68,68,0.15)",
-                      borderRadius: "4px",
-                      fontSize: "10px",
-                      color: "rgba(226,232,240,0.6)",
-                    }}
-                  >
-                    {t}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            {/* ATT&CK techniques */}
-            <div style={{ marginBottom: "16px" }}>
-              <div
-                style={{
-                  fontSize: "9px",
-                  fontWeight: 700,
-                  letterSpacing: "0.14em",
-                  color: "rgba(99,179,237,0.4)",
-                  marginBottom: "8px",
-                }}
-              >
-                MITRE ATT&amp;CK TECHNIQUES
-              </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                {selectedGroup.techniques.map((t) => (
-                  <span
-                    key={t}
-                    style={{
-                      padding: "3px 8px",
-                      background: `${selectedGroup.color}10`,
-                      border: `1px solid ${selectedGroup.color}25`,
-                      borderRadius: "4px",
-                      fontSize: "10px",
-                      color: selectedGroup.color,
-                      fontFamily: "'JetBrains Mono', monospace",
-                    }}
-                  >
-                    {t}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            {/* Correlated live events */}
-            {eventCounts[selectedGroup.id] > 0 && (
-              <div>
-                <div
-                  style={{
-                    fontSize: "9px",
-                    fontWeight: 700,
-                    letterSpacing: "0.14em",
-                    color: "rgba(99,179,237,0.4)",
-                    marginBottom: "8px",
-                  }}
-                >
-                  CORRELATED LIVE EVENTS
+                {/* aliases */}
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" as const, marginBottom: 8 }}>
+                  {g.aliases.slice(0, 3).map(a => (
+                    <span key={a} style={{
+                      fontSize: 7, padding: "1px 5px", borderRadius: 2,
+                      background: "rgba(99,179,237,0.06)", border: "1px solid rgba(99,179,237,0.1)",
+                      color: "rgba(226,232,240,0.4)", letterSpacing: "0.04em",
+                    }}>{a}</span>
+                  ))}
+                  {g.aliases.length > 3 && (
+                    <span style={{
+                      fontSize: 7, padding: "1px 5px", borderRadius: 2,
+                      background: "rgba(99,179,237,0.04)",
+                      color: "rgba(226,232,240,0.25)",
+                    }}>+{g.aliases.length - 3}</span>
+                  )}
                 </div>
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "6px",
-                  }}
-                >
-                  {events
-                    .filter((e) =>
-                      selectedGroup.malwareFamilies.some((mf) =>
-                        e.malwareFamily
-                          ?.toLowerCase()
-                          .includes(mf.toLowerCase())
-                      )
-                    )
-                    .slice(0, 5)
-                    .map((e) => (
-                      <div
-                        key={e.id}
+
+                {/* target sectors */}
+                <div style={{ display: "flex", gap: 3, flexWrap: "wrap" as const, marginBottom: 10 }}>
+                  {g.primaryTargets.map(t => <Tag key={t} label={t} color={accentCol} />)}
+                </div>
+
+                {/* recent ops */}
+                <div style={{
+                  borderTop: "1px solid rgba(99,179,237,0.05)",
+                  paddingTop: 8, display: "flex", flexDirection: "column" as const, gap: 5,
+                }}>
+                  {g.recentOps.slice(0, 3).map((op, i) => (
+                    <div key={i} style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+                      <span style={{
+                        fontSize: 7, fontFamily: "'JetBrains Mono',monospace",
+                        color: "rgba(226,232,240,0.25)", flexShrink: 0, marginTop: 1,
+                      }}>{op.date}</span>
+                      <span style={{
+                        fontSize: 8.5, color: "rgba(226,232,240,0.6)",
+                        lineHeight: 1.35, flex: 1,
+                      }}>{op.op}</span>
+                      <ConfBadge c={op.confidence} />
+                    </div>
+                  ))}
+                </div>
+
+                {/* expand chevron */}
+                <ChevronRight size={12} style={{
+                  position: "absolute" as const, right: 8, top: 12,
+                  color: selected?.id === g.id ? accentCol : "rgba(226,232,240,0.15)",
+                  transform: selected?.id === g.id ? "rotate(90deg)" : "none",
+                  transition: "transform 0.2s",
+                }} />
+              </div>
+            );
+          })}
+          {filtered.length === 0 && (
+            <div style={{
+              gridColumn: "1/-1", padding: 48, textAlign: "center" as const,
+              color: "rgba(226,232,240,0.2)", fontSize: 12,
+            }}>No groups match your search.</div>
+          )}
+        </div>
+
+        {/* DETAIL PANEL */}
+        {selected && (
+          <div style={{
+            width: 400, flexShrink: 0,
+            background: "rgba(4,8,16,0.97)",
+            borderLeft: `1px solid ${(SPONSOR_COLOR[selected.sponsor] ?? selected.color)}25`,
+            overflowY: "auto", display: "flex", flexDirection: "column" as const,
+          }}>
+            {/* panel header */}
+            <div style={{
+              padding: "14px 16px",
+              borderBottom: `1px solid ${(SPONSOR_COLOR[selected.sponsor] ?? selected.color)}18`,
+              background: `${SPONSOR_COLOR[selected.sponsor] ?? selected.color}08`,
+              flexShrink: 0,
+            }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                    <span style={{ fontSize: 20, fontWeight: 900, color: "#e2e8f0", letterSpacing: "0.06em" }}>{selected.name}</span>
+                    <span style={{ fontSize: 20 }}>{selected.sponsorFlag}</span>
+                    {selected.active && (
+                      <span style={{
+                        fontSize: 7, fontWeight: 800, letterSpacing: "0.12em",
+                        padding: "2px 6px", borderRadius: 3,
+                        background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.3)",
+                        color: "#10b981",
+                      }}>● ACTIVE</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 9, color: "rgba(226,232,240,0.4)", letterSpacing: "0.08em", fontFamily: "'JetBrains Mono',monospace" }}>
+                    {selected.agency}
+                  </div>
+                  <div style={{ fontSize: 9, color: "rgba(226,232,240,0.25)", marginTop: 2 }}>
+                    Active since {selected.activeSince} · {selected.sponsor}
+                  </div>
+                </div>
+                <button onClick={() => setSelected(null)} style={{
+                  background: "rgba(99,179,237,0.06)", border: "1px solid rgba(99,179,237,0.1)",
+                  borderRadius: 5, padding: "4px 6px", cursor: "pointer",
+                  color: "rgba(226,232,240,0.4)",
+                }}>
+                  <X size={12} />
+                </button>
+              </div>
+              <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8 }}>
+                <SophisticationDots level={selected.sophistication} color={SPONSOR_COLOR[selected.sponsor] ?? selected.color} />
+                <span style={{ fontSize: 8, color: "rgba(226,232,240,0.3)", letterSpacing: "0.1em" }}>SOPHISTICATION TIER {selected.sophistication}/5</span>
+              </div>
+              <div style={{ marginTop: 6, display: "flex", gap: 4, flexWrap: "wrap" as const }}>
+                {selected.motivation.map(m => <Tag key={m} label={m} color={SPONSOR_COLOR[selected.sponsor] ?? selected.color} />)}
+              </div>
+            </div>
+
+            <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px" }}>
+
+              {/* aliases */}
+              <Section label="All Known Aliases" color="#63b3ed">
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" as const }}>
+                  {selected.aliases.map(a => (
+                    <span key={a} style={{
+                      fontSize: 9, padding: "2px 7px", borderRadius: 3,
+                      background: "rgba(99,179,237,0.06)", border: "1px solid rgba(99,179,237,0.12)",
+                      color: "rgba(226,232,240,0.55)", letterSpacing: "0.04em",
+                    }}>{a}</span>
+                  ))}
+                </div>
+              </Section>
+
+              {/* target sectors */}
+              <Section label="Primary Target Sectors" color="#f59e0b">
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" as const }}>
+                  {selected.primaryTargets.map(t => <Tag key={t} label={t} color="#f59e0b" />)}
+                </div>
+              </Section>
+
+              {/* regions */}
+              <Section label="Active Regions" color="#38bdf8">
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" as const }}>
+                  {selected.regions.map(r => <Tag key={r} label={r} color="#38bdf8" />)}
+                </div>
+              </Section>
+
+              {/* malware families */}
+              <Section label="Malware Families" color="#ef4444">
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" as const }}>
+                  {selected.malwareFamilies.map(m => (
+                    <span key={m} style={{
+                      fontSize: 9, padding: "2px 7px", borderRadius: 3,
+                      background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.18)",
+                      color: "#ef4444", letterSpacing: "0.05em",
+                      fontFamily: "'JetBrains Mono',monospace",
+                    }}>{m}</span>
+                  ))}
+                </div>
+              </Section>
+
+              {/* CVEs */}
+              {selected.recentCVEs.length > 0 && (
+                <Section label="Exploited CVEs" color="#f97316">
+                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap" as const }}>
+                    {selected.recentCVEs.map(cve => (
+                      <a
+                        key={cve}
+                        href={`https://nvd.nist.gov/vuln/detail/${cve}`}
+                        target="_blank" rel="noopener noreferrer"
                         style={{
-                          background: "rgba(6,11,20,0.8)",
-                          border: `1px solid ${selectedGroup.color}20`,
-                          borderRadius: "6px",
-                          padding: "10px 12px",
+                          fontSize: 9, padding: "2px 7px", borderRadius: 3,
+                          background: "rgba(249,115,22,0.08)", border: "1px solid rgba(249,115,22,0.25)",
+                          color: "#f97316", letterSpacing: "0.05em", textDecoration: "none",
+                          fontFamily: "'JetBrains Mono',monospace",
+                          display: "flex", alignItems: "center", gap: 3,
                         }}
                       >
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            marginBottom: "3px",
-                          }}
-                        >
-                          <span
-                            style={{
-                              fontSize: "10px",
-                              fontFamily: "'JetBrains Mono', monospace",
-                              color: selectedGroup.color,
-                            }}
-                          >
-                            {e.indicator}
-                          </span>
-                          <span
-                            style={{
-                              fontSize: "9px",
-                              color: "rgba(226,232,240,0.3)",
-                            }}
-                          >
-                            {e.srcCountry} → {e.dstCountry}
-                          </span>
-                        </div>
-                        <div
-                          style={{
-                            fontSize: "9px",
-                            color: "rgba(226,232,240,0.35)",
-                          }}
-                        >
-                          {e.malwareFamily} · {e.source}
-                        </div>
-                      </div>
+                        {cve} <ExternalLink size={7} />
+                      </a>
                     ))}
+                  </div>
+                </Section>
+              )}
+
+              {/* MITRE ATT&CK TTPs */}
+              <Section label="MITRE ATT&CK Techniques" color="#a855f7">
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" as const }}>
+                  {selected.ttps.map(t => (
+                    <a
+                      key={t}
+                      href={`https://attack.mitre.org/techniques/${t.replace(".", "/")}/`}
+                      target="_blank" rel="noopener noreferrer"
+                      style={{
+                        fontSize: 9, padding: "2px 7px", borderRadius: 3,
+                        background: "rgba(168,85,247,0.08)", border: "1px solid rgba(168,85,247,0.25)",
+                        color: "#a855f7", letterSpacing: "0.05em", textDecoration: "none",
+                        fontFamily: "'JetBrains Mono',monospace",
+                        display: "flex", alignItems: "center", gap: 3,
+                      }}
+                    >
+                      {t} <ExternalLink size={7} />
+                    </a>
+                  ))}
                 </div>
-              </div>
-            )}
+              </Section>
+
+              {/* Operations timeline */}
+              <Section label="Operations Timeline" color="#10b981">
+                <div style={{ display: "flex", flexDirection: "column" as const, gap: 8 }}>
+                  {selected.recentOps.map((op, i) => (
+                    <div key={i} style={{
+                      display: "flex", gap: 8, alignItems: "flex-start",
+                      paddingLeft: 10,
+                      borderLeft: `2px solid ${confColor(op.confidence)}30`,
+                    }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                          <span style={{
+                            fontSize: 8, fontFamily: "'JetBrains Mono',monospace",
+                            color: "rgba(226,232,240,0.3)",
+                          }}>{op.date}</span>
+                          <ConfBadge c={op.confidence} />
+                        </div>
+                        <span style={{ fontSize: 10, color: "rgba(226,232,240,0.7)", lineHeight: 1.4 }}>{op.op}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Section>
+
+              {/* Live IOC correlation */}
+              {(iocMap[selected.id] ?? 0) > 0 && (
+                <Section label="Live Feed Correlation" color="#ef4444">
+                  <div style={{
+                    padding: "8px 10px", borderRadius: 5,
+                    background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.2)",
+                  }}>
+                    <span style={{ fontSize: 11, color: "#ef4444", fontWeight: 700 }}>
+                      ⚡ {iocMap[selected.id]} live event{(iocMap[selected.id] ?? 0) > 1 ? "s" : ""} matched
+                    </span>
+                    <div style={{ fontSize: 8, color: "rgba(226,232,240,0.3)", marginTop: 3 }}>
+                      Correlated via actor name, aliases, and malware family from live feed
+                    </div>
+                  </div>
+                </Section>
+              )}
+
+              {/* MITRE link */}
+              <a
+                href={`https://attack.mitre.org/groups/`}
+                target="_blank" rel="noopener noreferrer"
+                style={{
+                  display: "flex", alignItems: "center", gap: 5, marginTop: 8,
+                  fontSize: 9, color: "rgba(99,179,237,0.4)", textDecoration: "none",
+                  letterSpacing: "0.08em",
+                }}
+              >
+                <Activity size={10} /> View on MITRE ATT&CK <ExternalLink size={8} />
+              </a>
+
+            </div>
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── Section helper ───────────────────────────────────────────────────────────
+
+function Section({ label, color, children }: { label: string; color: string; children: React.ReactNode }) {
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{
+        fontSize: 8, fontWeight: 800, letterSpacing: "0.14em",
+        color, textTransform: "uppercase" as const,
+        marginBottom: 6, paddingBottom: 4,
+        borderBottom: `1px solid ${color}18`,
+      }}>{label}</div>
+      {children}
     </div>
   );
 }
