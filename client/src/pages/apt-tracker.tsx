@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { CyberEvent } from "@shared/schema";
-import { Shield, ChevronRight, X, ExternalLink, Activity, Search, Crosshair } from "lucide-react";
+import { Shield, ChevronRight, X, ExternalLink, Activity, Search, Crosshair, Download, Copy, Check } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -982,6 +982,9 @@ export default function AptTracker() {
                 <Activity size={10} /> View on MITRE ATT&CK <ExternalLink size={8} />
               </a>
 
+              {/* ── IOC Panel ── */}
+              <IocPanel aptId={selected.id} events={events} color={SPONSOR_COLOR[selected.sponsor] ?? selected.color} />
+
             </div>
           </div>
         )}
@@ -1002,6 +1005,309 @@ function Section({ label, color, children }: { label: string; color: string; chi
         borderBottom: `1px solid ${color}18`,
       }}>{label}</div>
       {children}
+    </div>
+  );
+}
+
+// ─── IOC types ───────────────────────────────────────────────────────────────
+
+interface AptIoc {
+  id: string;
+  type: "ip" | "domain" | "url" | "hash" | "unknown";
+  value: string;
+  malware: string;
+  confidence: number;
+  firstSeen: string | null;
+  source: string;
+  sourceUrl: string | null;
+  reference: string | null;
+  tags: string[];
+  liveMatch?: boolean;
+}
+
+interface IocApiResponse {
+  iocs: AptIoc[];
+  source: string;
+  count: number;
+  fetchedAt?: number;
+  cachedAt?: number;
+}
+
+const IOC_TYPE_COLOR: Record<string, string> = {
+  ip:      "#ff4444",
+  domain:  "#ffaa00",
+  url:     "#ff8800",
+  hash:    "#b44fff",
+  unknown: "#64748b",
+};
+
+const IOC_TABS = ["all", "ip", "domain", "hash", "url"] as const;
+type IocTab = typeof IOC_TABS[number];
+
+function IocPanel({ aptId, events, color }: { aptId: string; events: CyberEvent[]; color: string }) {
+  const [tab, setTab]       = useState<IocTab>("all");
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const { data, isLoading, isError, dataUpdatedAt, refetch } = useQuery<IocApiResponse>({
+    queryKey: ["/api/apt/iocs", aptId],
+    queryFn: async () => {
+      const r = await fetch(`/api/apt/${aptId}/iocs`);
+      if (!r.ok) throw new Error("IOC fetch failed");
+      return r.json() as Promise<IocApiResponse>;
+    },
+    refetchInterval: 5 * 60 * 1000,
+    staleTime: 4 * 60 * 1000,
+    retry: 2,
+  });
+
+  const iocs = data?.iocs ?? [];
+
+  const tabCounts = {
+    all:    iocs.length,
+    ip:     iocs.filter(i => i.type === "ip").length,
+    domain: iocs.filter(i => i.type === "domain").length,
+    hash:   iocs.filter(i => i.type === "hash").length,
+    url:    iocs.filter(i => i.type === "url").length,
+  };
+
+  const visible = tab === "all" ? iocs : iocs.filter(i => i.type === tab);
+
+  function copyToClipboard(value: string) {
+    navigator.clipboard.writeText(value).then(() => {
+      setCopied(value);
+      setTimeout(() => setCopied(null), 2000);
+    });
+  }
+
+  function downloadCsv() {
+    const rows = [
+      ["type","value","malware","confidence","firstSeen","source","sourceUrl","liveMatch"],
+      ...iocs.map(i => [
+        i.type, i.value, i.malware, String(i.confidence),
+        i.firstSeen ?? "", i.source, i.sourceUrl ?? "", i.liveMatch ? "true" : "false",
+      ]),
+    ].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([rows], { type: "text/csv" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href = url; a.download = `${aptId}-iocs-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+  }
+
+  function downloadJson() {
+    const blob = new Blob([JSON.stringify(iocs, null, 2)], { type: "application/json" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href = url; a.download = `${aptId}-iocs-${new Date().toISOString().slice(0,10)}.json`;
+    a.click(); URL.revokeObjectURL(url);
+  }
+
+  const fetchedLabel = dataUpdatedAt
+    ? `Updated ${new Date(dataUpdatedAt).toLocaleTimeString()}`
+    : "";
+
+  return (
+    <div style={{ marginTop: 16, marginBottom: 8 }}>
+      {/* Section header + download buttons */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        marginBottom: 8, paddingBottom: 4,
+        borderBottom: `1px solid ${color}25`,
+      }}>
+        <div style={{
+          fontSize: 8, fontWeight: 800, letterSpacing: "0.14em",
+          color, textTransform: "uppercase" as const,
+          display: "flex", alignItems: "center", gap: 6,
+        }}>
+          Indicators of Compromise
+          {iocs.length > 0 && (
+            <span style={{
+              fontSize: 7, padding: "1px 5px", borderRadius: 2,
+              background: `${color}18`, border: `1px solid ${color}30`,
+              color, fontVariantNumeric: "tabular-nums",
+            }}>{iocs.length}</span>
+          )}
+          {data?.source === "live" && (
+            <span style={{
+              fontSize: 7, padding: "1px 5px", borderRadius: 2,
+              background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)",
+              color: "#10b981",
+            }}>● LIVE</span>
+          )}
+        </div>
+        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+          {fetchedLabel && (
+            <span style={{ fontSize: 7, color: "rgba(226,232,240,0.2)", fontFamily: "'JetBrains Mono',monospace" }}>
+              {fetchedLabel}
+            </span>
+          )}
+          {iocs.length > 0 && (
+            <>
+              <button
+                onClick={downloadCsv}
+                title="Download CSV"
+                style={{
+                  display: "flex", alignItems: "center", gap: 3,
+                  padding: "3px 7px", borderRadius: 4,
+                  background: `${color}10`, border: `1px solid ${color}30`,
+                  color, cursor: "pointer", fontSize: 8, fontWeight: 700,
+                  fontFamily: "'Rajdhani',sans-serif", letterSpacing: "0.08em",
+                }}
+              >
+                <Download size={9} /> CSV
+              </button>
+              <button
+                onClick={downloadJson}
+                title="Download JSON"
+                style={{
+                  display: "flex", alignItems: "center", gap: 3,
+                  padding: "3px 7px", borderRadius: 4,
+                  background: "rgba(99,179,237,0.06)", border: "1px solid rgba(99,179,237,0.15)",
+                  color: "rgba(99,179,237,0.7)", cursor: "pointer", fontSize: 8, fontWeight: 700,
+                  fontFamily: "'Rajdhani',sans-serif", letterSpacing: "0.08em",
+                }}
+              >
+                <Download size={9} /> JSON
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Tab bar */}
+      <div style={{ display: "flex", gap: 3, marginBottom: 8 }}>
+        {IOC_TABS.map(t => {
+          const cnt = tabCounts[t];
+          const on  = tab === t;
+          const tc  = t === "all" ? color : (IOC_TYPE_COLOR[t] ?? color);
+          return (
+            <button key={t} onClick={() => setTab(t)} style={{
+              padding: "2px 8px", borderRadius: 3,
+              border: `1px solid ${on ? tc + "40" : "rgba(99,179,237,0.08)"}`,
+              background: on ? `${tc}12` : "transparent",
+              color: on ? tc : "rgba(226,232,240,0.3)",
+              cursor: cnt === 0 && t !== "all" ? "default" : "pointer",
+              fontSize: 8, fontWeight: 800, letterSpacing: "0.1em",
+              fontFamily: "'Rajdhani',sans-serif", textTransform: "uppercase" as const,
+              opacity: cnt === 0 && t !== "all" ? 0.4 : 1,
+            }}>
+              {t}{cnt > 0 ? ` · ${cnt}` : ""}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Loading */}
+      {isLoading && (
+        <div style={{
+          padding: "14px 10px", textAlign: "center" as const,
+          color: "rgba(226,232,240,0.2)", fontSize: 9,
+          fontFamily: "'JetBrains Mono',monospace", letterSpacing: "0.06em",
+        }}>Fetching IOCs from ThreatFox + live feed…</div>
+      )}
+
+      {/* Error */}
+      {isError && !isLoading && (
+        <div style={{
+          padding: "10px", borderRadius: 5,
+          background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.15)",
+          color: "rgba(239,68,68,0.6)", fontSize: 9,
+        }}>Failed to fetch IOCs. <button onClick={() => refetch()} style={{ background: "none", border: "none", color: "#63b3ed", cursor: "pointer", fontSize: 9 }}>Retry</button></div>
+      )}
+
+      {/* Empty */}
+      {!isLoading && !isError && iocs.length === 0 && (
+        <div style={{
+          padding: "12px 10px", textAlign: "center" as const,
+          color: "rgba(226,232,240,0.18)", fontSize: 9,
+          fontFamily: "'JetBrains Mono',monospace",
+        }}>No IOCs found in ThreatFox or live feeds for this actor.</div>
+      )}
+
+      {/* IOC list */}
+      {visible.length > 0 && (
+        <div style={{
+          maxHeight: 280, overflowY: "auto",
+          display: "flex", flexDirection: "column" as const, gap: 2,
+        }}>
+          {visible.slice(0, 150).map((ioc, idx) => {
+            const tc = IOC_TYPE_COLOR[ioc.type] ?? "#64748b";
+            const isCopied = copied === ioc.value;
+            return (
+              <div key={ioc.id + idx} style={{
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "4px 6px", borderRadius: 4,
+                background: ioc.liveMatch
+                  ? "rgba(16,185,129,0.04)"
+                  : "rgba(99,179,237,0.02)",
+                border: ioc.liveMatch
+                  ? "1px solid rgba(16,185,129,0.12)"
+                  : "1px solid rgba(99,179,237,0.05)",
+              }}>
+                {/* Type badge */}
+                <span style={{
+                  fontSize: 6.5, fontWeight: 800, letterSpacing: "0.1em",
+                  padding: "1px 4px", borderRadius: 2,
+                  background: `${tc}18`, border: `1px solid ${tc}30`,
+                  color: tc, textTransform: "uppercase" as const,
+                  flexShrink: 0, minWidth: 38, textAlign: "center" as const,
+                }}>{ioc.type}</span>
+
+                {/* IOC value */}
+                <span style={{
+                  flex: 1, fontFamily: "'JetBrains Mono',monospace",
+                  fontSize: 9, color: "rgba(226,232,240,0.75)",
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const,
+                  minWidth: 0,
+                }} title={ioc.value}>{ioc.value}</span>
+
+                {/* Source */}
+                <span style={{
+                  fontSize: 7, color: ioc.liveMatch ? "#10b981" : "rgba(99,179,237,0.35)",
+                  fontFamily: "'JetBrains Mono',monospace", flexShrink: 0,
+                  letterSpacing: "0.04em",
+                }}>{ioc.liveMatch ? "LIVE" : "ThreatFox"}</span>
+
+                {/* Confidence */}
+                <span style={{
+                  fontSize: 7, color: "rgba(226,232,240,0.25)",
+                  fontFamily: "'JetBrains Mono',monospace", flexShrink: 0,
+                }}>{ioc.confidence}%</span>
+
+                {/* Copy button */}
+                <button
+                  onClick={() => copyToClipboard(ioc.value)}
+                  title="Copy"
+                  style={{
+                    background: "none", border: "none", cursor: "pointer",
+                    color: isCopied ? "#10b981" : "rgba(226,232,240,0.2)",
+                    padding: 2, flexShrink: 0, display: "flex", alignItems: "center",
+                    transition: "color 0.2s",
+                  }}
+                >
+                  {isCopied ? <Check size={10} /> : <Copy size={10} />}
+                </button>
+
+                {/* External link */}
+                {ioc.sourceUrl && (
+                  <a
+                    href={ioc.sourceUrl}
+                    target="_blank" rel="noopener noreferrer"
+                    style={{ color: "rgba(99,179,237,0.2)", flexShrink: 0, display: "flex", alignItems: "center" }}
+                  >
+                    <ExternalLink size={9} />
+                  </a>
+                )}
+              </div>
+            );
+          })}
+          {visible.length > 150 && (
+            <div style={{ fontSize: 8, color: "rgba(226,232,240,0.2)", textAlign: "center" as const, padding: "4px 0" }}>
+              +{visible.length - 150} more · download for full list
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

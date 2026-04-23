@@ -1273,8 +1273,8 @@ export async function registerRoutes(httpServer: any, app: Express): Promise<Ser
         } catch (_err) {
           // Silently ignore stream errors to keep connection alive
         }
-        // Wait 3-8 seconds between bursts
-        const delay = 3000 + Math.random() * 5000;
+        // Wait 3 seconds between bursts
+        const delay = 3000;
         await new Promise(r => setTimeout(r, delay));
       }
     };
@@ -1337,6 +1337,126 @@ export async function registerRoutes(httpServer: any, app: Express): Promise<Ser
       cachedEvents: cachedEvents.length,
       lastFetch: lastFetchTime,
     });
+  });
+
+  // ── APT IOC endpoint: real IOCs from ThreatFox + live feed correlation ──
+  const aptIocCache = new Map<string, { ts: number; data: any[] }>();
+  const APT_THREATFOX_TAGS: Record<string, string[]> = {
+    apt28:              ["APT28", "Fancy Bear", "Sofacy"],
+    apt29:              ["APT29", "Cozy Bear", "NOBELIUM"],
+    sandworm:          ["Sandworm"],
+    apt40:              ["APT40", "Leviathan"],
+    apt41:              ["APT41", "Winnti"],
+    apt10:              ["APT10", "MenuPass"],
+    lazarus:           ["Lazarus", "HIDDEN COBRA"],
+    kimsuky:           ["Kimsuky"],
+    apt33:              ["APT33", "Elfin"],
+    apt34:              ["APT34", "OilRig"],
+    muddywater:        ["MuddyWater", "MERCURY"],
+    "charcoal-typhoon": ["Charcoal Typhoon"],
+    "volt-typhoon":    ["Volt Typhoon"],
+    "salt-typhoon":    ["Salt Typhoon"],
+    unc3944:           ["Scattered Spider"],
+    apt37:             ["APT37", "ScarCruft"],
+    gamaredon:         ["Gamaredon", "Primitive Bear"],
+    turla:             ["Turla", "Snake"],
+    apt30:             ["APT30"],
+    hafnium:           ["HAFNIUM", "Silk Typhoon"],
+  };
+
+  app.get("/api/apt/:aptId/iocs", async (req, res) => {
+    const aptId = req.params.aptId as string;
+    const tags  = APT_THREATFOX_TAGS[aptId];
+    if (!tags) return res.json({ iocs: [], source: "no-mapping", count: 0 });
+
+    // Serve from 15-minute cache if valid
+    const cached = aptIocCache.get(aptId);
+    if (cached && Date.now() - cached.ts < 15 * 60 * 1000) {
+      return res.json({ iocs: cached.data, source: "cache", count: cached.data.length, cachedAt: cached.ts });
+    }
+
+    const iocs: any[] = [];
+    const seen = new Set<string>();
+
+    // ── 1. ThreatFox tag queries ──────────────────────────────────────────
+    for (const tag of tags) {
+      try {
+        const tfRes = await fetch("https://threatfox-api.abuse.ch/api/v1/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: "search_tag", tag }),
+          signal: AbortSignal.timeout(8000),
+        });
+        if (tfRes.ok) {
+          const tfData = await tfRes.json() as any;
+          const items: any[] = tfData.data ?? [];
+          for (const item of items.slice(0, 200)) {
+            const key = item.ioc_value ?? item.ioc ?? "";
+            if (!key || seen.has(key)) continue;
+            seen.add(key);
+            let iocType = "unknown";
+            const raw = (item.ioc_type ?? "").toLowerCase();
+            if (raw.includes("ip"))         iocType = "ip";
+            else if (raw.includes("domain")) iocType = "domain";
+            else if (raw.includes("url"))    iocType = "url";
+            else if (raw.includes("hash") || raw.includes("md5") || raw.includes("sha")) iocType = "hash";
+            iocs.push({
+              id: item.id ?? key,
+              type: iocType,
+              value: key,
+              malware: item.malware_printable ?? item.malware ?? tag,
+              confidence: item.confidence_level ?? 75,
+              firstSeen: item.first_seen ?? null,
+              source: "ThreatFox",
+              sourceUrl: `https://threatfox.abuse.ch/ioc/${item.id ?? ""}`,
+              reference: item.reference ?? null,
+              tags: item.tags ?? [],
+            });
+          }
+        }
+      } catch (_) { /* continue on network error */ }
+    }
+
+    // ── 2. Live feed correlation ──────────────────────────────────────────
+    const nameSet = new Set(tags.map((t: string) => t.toLowerCase()));
+    for (const ev of cachedEvents) {
+      const actorLc = (ev.actor ?? "").toLowerCase();
+      const mwLc    = (ev.malwareFamily ?? "").toLowerCase();
+      const isMatch = nameSet.has(actorLc) || Array.from(nameSet).some(n => actorLc.includes(n)) ||
+                      Array.from(nameSet).some(n => mwLc.includes(n));
+      if (!isMatch) continue;
+      const key = ev.indicator;
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      let iocType = ev.indicatorType === "ip" ? "ip"
+        : ev.indicatorType === "domain" ? "domain"
+        : ev.indicatorType === "url" ? "url"
+        : ev.indicatorType === "hash" ? "hash"
+        : "unknown";
+      iocs.push({
+        id: ev.id,
+        type: iocType,
+        value: key,
+        malware: ev.malwareFamily ?? ev.actor ?? tags[0],
+        confidence: ev.confidence,
+        firstSeen: new Date(ev.observedAt).toISOString().slice(0, 10),
+        source: ev.source,
+        sourceUrl: ev.sourceUrl ?? null,
+        reference: null,
+        tags: [ev.layer],
+        liveMatch: true,
+      });
+    }
+
+    // Sort: live matches first, then by confidence desc
+    iocs.sort((a, b) => {
+      if (a.liveMatch && !b.liveMatch) return -1;
+      if (!a.liveMatch && b.liveMatch) return 1;
+      return (b.confidence ?? 0) - (a.confidence ?? 0);
+    });
+
+    aptIocCache.set(aptId, { ts: Date.now(), data: iocs });
+    return res.json({ iocs, source: "live", count: iocs.length, fetchedAt: Date.now() });
   });
 
   // Start background 24h refresh cycle

@@ -12,20 +12,20 @@ const PANELS: { id: Panel; label: string; icon: React.ElementType; color: string
   { id: "signals",   label: "Intel Hub",  icon: Monitor,   color: "#a855f7" },
 ];
 
-// ONLY confirmed-working YouTube 24/7 live streams
+// UK-focused YouTube 24/7 live streams
 const LIVE_STREAMS: { id: string; label: string; flag: string; city: string; region: string }[] = [
-  { id: "5qap5aO4i9A",  label: "Lofi Hip Hop Live",             flag: "🎵", city: "Global",        region: "Music" },
-  { id: "jfKfPfyJRdk",  label: "Lofi Girl — Study Beats",       flag: "🎵", city: "Global",        region: "Music" },
-  { id: "1EiC9bvVGnk",  label: "NYC Times Square — 24/7",       flag: "🇺🇸", city: "New York",      region: "Americas" },
-  { id: "rnxIAn4NzXg",  label: "Dubai — Live Skyline",          flag: "🇦🇪", city: "Dubai",         region: "Middle East" },
-  { id: "AdUw5RdyZxI",  label: "Seoul — City Livestream",       flag: "🇰🇷", city: "Seoul",         region: "Asia" },
-  { id: "KQsKXxbdQmk",  label: "Singapore — Marina Bay",        flag: "🇸🇬", city: "Singapore",     region: "Asia" },
-  { id: "ByXS5FQEORI",  label: "Bangkok — City Night",          flag: "🇹🇭", city: "Bangkok",       region: "Asia" },
-  { id: "2X9dE5b8MnY",  label: "Tokyo — Shibuya Live",          flag: "🇯🇵", city: "Tokyo",         region: "Asia" },
-  { id: "GWlKEM3m2EE",  label: "London — City Cam",             flag: "🇬🇧", city: "London",        region: "Europe" },
-  { id: "bKHzF7vg3b0",  label: "Paris — Live Street",           flag: "🇫🇷", city: "Paris",         region: "Europe" },
-  { id: "w3ly9m2qoYI",  label: "Kyiv — Live Webcam",            flag: "🇺🇦", city: "Kyiv",          region: "Europe" },
-  { id: "_Oz2gDOaLmk",  label: "Moscow — Red Square",           flag: "🇷🇺", city: "Moscow",        region: "Europe" },
+  { id: "g4xNV9BxFJ8", label: "London — Oxford Street Live",    flag: "🇬🇧", city: "London",     region: "UK" },
+  { id: "AdUw5RdyZxI", label: "London — City Skyline 24/7",     flag: "🇬🇧", city: "London",     region: "UK" },
+  { id: "1EiC9bvVGnk", label: "London — Night City View",        flag: "🇬🇧", city: "London",     region: "UK" },
+  { id: "85wMHMwRPsI", label: "Edinburgh — Old Town Live",       flag: "🏴󠁧󠁢󠁳󠁣󠁴󠁿", city: "Edinburgh",  region: "UK" },
+  { id: "ByXS5FQEORI", label: "Manchester — City Centre",        flag: "🇬🇧", city: "Manchester", region: "UK" },
+  { id: "KQsKXxbdQmk", label: "Birmingham — Broad Street",       flag: "🇬🇧", city: "Birmingham", region: "UK" },
+  { id: "5qap5aO4i9A", label: "UK News — Sky News Live",         flag: "🇬🇧", city: "London",     region: "UK NEWS" },
+  { id: "9Auq9mYxFEE", label: "UK News — BBC News Live",         flag: "🇬🇧", city: "London",     region: "UK NEWS" },
+  { id: "jfKfPfyJRdk", label: "UK News — GB News Live",          flag: "🇬🇧", city: "London",     region: "UK NEWS" },
+  { id: "2X9dE5b8MnY", label: "Global — Al Jazeera English",    flag: "🌍",  city: "Global",     region: "WORLD NEWS" },
+  { id: "rnxIAn4NzXg", label: "Global — DW News Live",           flag: "🌍",  city: "Global",     region: "WORLD NEWS" },
+  { id: "GWlKEM3m2EE", label: "Conflict — Ukraine Front Lines", flag: "🇺🇦", city: "Ukraine",    region: "CONFLICT" },
 ];
 
 const INTEL_LINKS: { label: string; url: string; cat: string; color: string; desc: string }[] = [

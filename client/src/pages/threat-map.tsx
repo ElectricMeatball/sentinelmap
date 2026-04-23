@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
-type TimeRange = "1h" | "6h" | "24h" | "7d";
+type TimeRange = "1h" | "6h" | "24h";
 
 interface ViewState {
   lat: number;
@@ -44,7 +44,7 @@ const MITRE_NAMES: Record<string, string> = {
 };
 
 const TIME_LABELS: Record<TimeRange, string> = {
-  "1h": "1H", "6h": "6H", "24h": "24H", "7d": "7D",
+  "1h": "1H", "6h": "6H", "24h": "24H",
 };
 
 // ─── URL State helpers ──────────────────────────────────────────────────────
@@ -58,7 +58,7 @@ function parseURLState(): ViewState {
     lat:       parseFloat(p.get("lat")  || "20"),
     lon:       parseFloat(p.get("lon")  || "0"),
     zoom:      parseFloat(p.get("zoom") || "2.3"),
-    timeRange: (["1h","6h","24h","7d"].includes(p.get("timeRange") || "") ? p.get("timeRange") as TimeRange : "24h"),
+    timeRange: (["1h","6h","24h"].includes(p.get("timeRange") || "") ? p.get("timeRange") as TimeRange : "24h"),
     layers,
   };
 }
@@ -789,7 +789,7 @@ function TopBar({
 
       {/* Time range */}
       <div style={{ display: "flex", gap: "4px" }}>
-        {(["1h", "6h", "24h", "7d"] as TimeRange[]).map(t => (
+        {(["1h", "6h", "24h"] as TimeRange[]).map(t => (
           <button
             key={t}
             className={`time-pill ${timeRange === t ? "active" : ""}`}
@@ -1095,17 +1095,20 @@ function EventPanel({ event, onClose, sidebarWidth }: {
 }
 
 // ─── Event list panel (shows when no event selected) ──────────────────────
-function EventListPanel({ events, activeLayers, onSelect, sidebarWidth, liveEventIds }: {
+function EventListPanel({ events, activeLayers, onSelect, sidebarWidth, liveEventIds, liveEvents }: {
   events: CyberEvent[];
   activeLayers: Set<LayerType>;
   onSelect: (e: CyberEvent) => void;
   sidebarWidth: number;
   liveEventIds?: Set<string>;
+  liveEvents?: CyberEvent[];
 }) {
-  const filtered = useMemo(
-    () => events.filter(e => activeLayers.has(e.layer)).slice(0, 50),
-    [events, activeLayers]
-  );
+  const filtered = useMemo(() => {
+    const live = (liveEvents || []).filter(e => activeLayers.has(e.layer)).slice(0, 20);
+    const liveIds = new Set(live.map(e => e.id));
+    const rest = events.filter(e => activeLayers.has(e.layer) && !liveIds.has(e.id));
+    return [...live, ...rest].slice(0, 100);
+  }, [events, activeLayers, liveEvents]);
 
   return (
     <div
@@ -1507,6 +1510,7 @@ export default function ThreatMap() {
             onSelect={handleSelectEvent}
             sidebarWidth={sidebarWidth}
             liveEventIds={new Set(liveEvents.map(e => e.id))}
+            liveEvents={liveEvents}
           />
         )
       )}

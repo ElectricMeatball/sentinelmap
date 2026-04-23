@@ -507,6 +507,11 @@ html, body, #root {
 .leaflet-pane.arc-pane {
   z-index: 450;
 }
+.leaflet-pane.arc-pane canvas,
+#arc-canvas,
+.arc-canvas {
+  pointer-events: none !important;
+}
 
 /* ── Palantir-grade panel borders ── */
 .sentinel-sidebar,

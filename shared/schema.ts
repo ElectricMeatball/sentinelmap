@@ -34,15 +34,15 @@ export const LAYER_TYPES = [
 export type LayerType = typeof LAYER_TYPES[number];
 
 export const LAYER_META: Record<LayerType, { label: string; color: string; icon: string }> = {
-  malware:    { label: "Malware",      color: "#f43f5e", icon: "skull" },
-  c2:         { label: "C2 / Botnet",  color: "#e11d48", icon: "server" },
-  phishing:   { label: "Phishing",     color: "#f59e0b", icon: "fish" },
-  ransomware: { label: "Ransomware",   color: "#a855f7", icon: "lock" },
-  botnet:     { label: "Botnet",       color: "#06b6d4", icon: "network" },
-  bruteforce: { label: "Brute Force",  color: "#3b82f6", icon: "zap" },
-  exploit:    { label: "Exploit",      color: "#10b981", icon: "bug" },
-  spam:       { label: "Spam",         color: "#6b7280", icon: "mail" },
-  ddos:       { label: "DDoS",         color: "#ef4444", icon: "activity" },
+  malware:    { label: "Malware",       color: "#ff4444", icon: "skull" },
+  c2:         { label: "C2 / Callback", color: "#ff8800", icon: "server" },
+  phishing:   { label: "Phishing",      color: "#ffaa00", icon: "fish" },
+  ransomware: { label: "Ransomware",    color: "#ff6a00", icon: "lock" },
+  botnet:     { label: "Botnet",        color: "#0099ff", icon: "network" },
+  bruteforce: { label: "Brute Force",   color: "#00e5cc", icon: "zap" },
+  exploit:    { label: "Exploit / CVE", color: "#b44fff", icon: "bug" },
+  spam:       { label: "Spam / Abuse",  color: "#aabb00", icon: "mail" },
+  ddos:       { label: "DDoS",          color: "#ff44aa", icon: "activity" },
 };
 
 // ─── Normalized Cyber Event ────────────────────────────────────────────────
