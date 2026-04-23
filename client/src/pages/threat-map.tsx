@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
-type TimeRange = "1h" | "6h" | "24h" | "7d" | "30d";
+type TimeRange = "1h" | "6h" | "24h" | "7d";
 
 interface ViewState {
   lat: number;
@@ -44,7 +44,7 @@ const MITRE_NAMES: Record<string, string> = {
 };
 
 const TIME_LABELS: Record<TimeRange, string> = {
-  "1h": "1H", "6h": "6H", "24h": "24H", "7d": "7D", "30d": "30D",
+  "1h": "1H", "6h": "6H", "24h": "24H", "7d": "7D",
 };
 
 // ─── URL State helpers ──────────────────────────────────────────────────────
@@ -58,7 +58,7 @@ function parseURLState(): ViewState {
     lat:       parseFloat(p.get("lat")  || "20"),
     lon:       parseFloat(p.get("lon")  || "0"),
     zoom:      parseFloat(p.get("zoom") || "2.3"),
-    timeRange: (p.get("timeRange") as TimeRange) || "24h",
+    timeRange: (["1h","6h","24h","7d"].includes(p.get("timeRange") || "") ? p.get("timeRange") as TimeRange : "24h"),
     layers,
   };
 }
@@ -789,7 +789,7 @@ function TopBar({
 
       {/* Time range */}
       <div style={{ display: "flex", gap: "4px" }}>
-        {(["1h", "6h", "24h", "7d", "30d"] as TimeRange[]).map(t => (
+        {(["1h", "6h", "24h", "7d"] as TimeRange[]).map(t => (
           <button
             key={t}
             className={`time-pill ${timeRange === t ? "active" : ""}`}
@@ -1095,11 +1095,12 @@ function EventPanel({ event, onClose, sidebarWidth }: {
 }
 
 // ─── Event list panel (shows when no event selected) ──────────────────────
-function EventListPanel({ events, activeLayers, onSelect, sidebarWidth }: {
+function EventListPanel({ events, activeLayers, onSelect, sidebarWidth, liveEventIds }: {
   events: CyberEvent[];
   activeLayers: Set<LayerType>;
   onSelect: (e: CyberEvent) => void;
   sidebarWidth: number;
+  liveEventIds?: Set<string>;
 }) {
   const filtered = useMemo(
     () => events.filter(e => activeLayers.has(e.layer)).slice(0, 50),
@@ -1120,7 +1121,7 @@ function EventListPanel({ events, activeLayers, onSelect, sidebarWidth }: {
         const color = meta.color;
         const Icon  = LAYER_ICONS[ev.layer];
         return (
-          <div key={ev.id} className="event-item" onClick={() => onSelect(ev)}>
+          <div key={ev.id} className={`event-item${liveEventIds?.has(ev.id) ? " event-new" : ""}`} onClick={() => onSelect(ev)}>
             <div style={{ display: "flex", alignItems: "center", gap: "7px" }}>
               <div style={{
                 width: "22px", height: "22px", borderRadius: "5px", flexShrink: 0,
@@ -1253,19 +1254,21 @@ export default function ThreatMap() {
   const [viewMode, setViewMode]            = useState<"arcs"|"heatmap">("arcs");
   const [showChoropleth, setShowChoropleth] = useState(false);
   const [liveEvents, setLiveEvents]         = useState<CyberEvent[]>([]);
+  const [bustKey, setBustKey]               = useState(0);
+  const [isRefreshing, setIsRefreshing]     = useState(false);
   const mapRef = useRef<L.Map | null>(null);
 
   const sidebarWidth = sidebarCollapsed ? 48 : 260;
 
   // ── Data fetching ──
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ["threats", viewState.timeRange, Array.from(viewState.layers).sort().join(",")],
+    queryKey: ["threats", viewState.timeRange, Array.from(viewState.layers).sort().join(","), bustKey],
     queryFn: async () => {
       const layers = Array.from(viewState.layers).join(",");
-      const res = await fetch(`/api/threats/live?timeRange=${viewState.timeRange}&layers=${layers}`);
+      const res = await fetch(`/api/threats/live?timeRange=${viewState.timeRange}&layers=${layers}${bustKey ? `&bust=${bustKey}` : ""}`);
       return res.json() as Promise<{ events: CyberEvent[]; feeds: FeedStatus[]; total: number; lastUpdated: number }>;
     },
-    refetchInterval: 5 * 60 * 1000,
+    refetchInterval: 2 * 60 * 1000,
     staleTime: 2 * 60 * 1000,
   });
 
@@ -1320,6 +1323,14 @@ export default function ThreatMap() {
       pushURLState(updated);
       return updated;
     });
+  }, []);
+
+  const handleRefresh = useCallback(() => {
+    const newBust = Date.now();
+    setLiveEvents([]);
+    setBustKey(newBust);
+    setIsRefreshing(true);
+    setTimeout(() => setIsRefreshing(false), 2000);
   }, []);
 
   const handleViewChange = useCallback((lat: number, lon: number, zoom: number) => {
@@ -1386,6 +1397,11 @@ export default function ThreatMap() {
     const style = document.createElement("style");
     style.textContent = `
       @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+      @keyframes eventFlash {
+        0%   { background: rgba(56,189,248,0.15); border-left: 2px solid #38bdf8; }
+        100% { background: transparent; border-left: 2px solid transparent; }
+      }
+      .event-new { animation: eventFlash 2s ease-out forwards; }
     `;
     document.head.appendChild(style);
     return () => { document.head.removeChild(style); };
@@ -1470,8 +1486,8 @@ export default function ThreatMap() {
         onSearch={setSearch}
         totalEvents={filteredEvents.length}
         sidebarWidth={sidebarWidth}
-        onRefresh={() => refetch()}
-        isLoading={isLoading}
+        onRefresh={handleRefresh}
+        isLoading={isLoading || isRefreshing}
         viewMode={viewMode}
         onToggleView={() => setViewMode(p => p === "arcs" ? "heatmap" : "arcs")}
       />
@@ -1490,6 +1506,7 @@ export default function ThreatMap() {
             activeLayers={viewState.layers}
             onSelect={handleSelectEvent}
             sidebarWidth={sidebarWidth}
+            liveEventIds={new Set(liveEvents.map(e => e.id))}
           />
         )
       )}

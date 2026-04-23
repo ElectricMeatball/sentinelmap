@@ -1204,6 +1204,12 @@ export async function registerRoutes(httpServer: any, app: Express): Promise<Ser
       const timeRange = (req.query.timeRange as TimeRange) || "24h";
       const layers = req.query.layers ? (req.query.layers as string).split(",") : null;
 
+      // Cache-bust: force a fresh fetch if ?bust= param is provided
+      if (req.query.bust) {
+        cachedEvents = [];
+        lastFetchTime = 0;
+      }
+
       const events = await buildEvents();
       let filtered = filterByTimeRange(events, timeRange);
 
