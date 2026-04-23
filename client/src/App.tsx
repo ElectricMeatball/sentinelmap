@@ -5,11 +5,13 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import ThreatMapPage from "@/pages/threat-map";
+import OpsRoom from "@/pages/ops-room";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={ThreatMapPage} />
+      <Route path="/ops-room" component={OpsRoom} />
       <Route component={NotFound} />
     </Switch>
   );

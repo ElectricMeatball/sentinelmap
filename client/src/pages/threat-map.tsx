@@ -10,7 +10,7 @@ import {
   Activity, AlertTriangle, Bug, Clock, Crosshair, Download,
   Filter, Globe, Layers, Lock, Mail, Radar, RefreshCw, Search,
   Server, Shield, Skull, TrendingUp, Wifi, X, Zap, ZoomIn, ZoomOut,
-  ChevronRight, ChevronLeft, Circle, Info, ExternalLink, Eye, EyeOff,
+  ChevronRight, ChevronLeft, Circle, Info, ExternalLink, Eye, EyeOff, Monitor,
 } from "lucide-react";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -854,6 +854,26 @@ function TopBar({
         >
           <RefreshCw size={12} style={{ animation: isLoading ? "spin 1s linear infinite" : "none" }} />
         </button>
+        {/* OPS ROOM link */}
+        <a href="/ops-room" style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "5px",
+          padding: "5px 12px",
+          background: "rgba(239,68,68,0.1)",
+          border: "1px solid rgba(239,68,68,0.25)",
+          borderRadius: "6px",
+          color: "#ef4444",
+          textDecoration: "none",
+          fontSize: "10px",
+          fontWeight: 800,
+          letterSpacing: "0.12em",
+          textTransform: "uppercase",
+          fontFamily: "'Rajdhani', sans-serif",
+          whiteSpace: "nowrap",
+        }}>
+          <Monitor size={12} /> OPS ROOM
+        </a>
       </div>
     </div>
   );
