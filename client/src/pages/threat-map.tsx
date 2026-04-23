@@ -586,7 +586,7 @@ function ChoroplethLayer({ visible }: { visible: boolean }) {
 // ─── Sidebar ──────────────────────────────────────────────────────────────
 function Sidebar({
   activeLayers, onToggleLayer, layerCounts, feeds, collapsed, onToggleCollapse,
-  showChoropleth, onToggleChoropleth,
+  showChoropleth, onToggleChoropleth, mobileOpen,
 }: {
   activeLayers: Set<LayerType>;
   onToggleLayer: (l: LayerType) => void;
@@ -596,12 +596,13 @@ function Sidebar({
   onToggleCollapse: () => void;
   showChoropleth: boolean;
   onToggleChoropleth: () => void;
+  mobileOpen?: boolean;
 }) {
   const liveFeedCount = feeds.filter(f => f.status === "live").length;
 
   return (
     <div
-      className="sentinel-sidebar"
+      className={`sentinel-sidebar${mobileOpen ? ' mobile-open' : ''}`}
       style={{
         width: collapsed ? "48px" : "260px",
         transition: "width 0.2s ease",
@@ -755,7 +756,7 @@ function Sidebar({
 // ─── Top bar ──────────────────────────────────────────────────────────────
 function TopBar({
   lat, lon, zoom, timeRange, onTimeRange, search, onSearch, totalEvents, sidebarWidth,
-  onRefresh, isLoading, viewMode, onToggleView,
+  onRefresh, isLoading, viewMode, onToggleView, onMenuToggle,
 }: {
   lat: number; lon: number; zoom: number;
   timeRange: TimeRange; onTimeRange: (t: TimeRange) => void;
@@ -764,6 +765,7 @@ function TopBar({
   onRefresh: () => void; isLoading: boolean;
   viewMode: "arcs" | "heatmap";
   onToggleView: () => void;
+  onMenuToggle?: () => void;
 }) {
   const fmtCoord = (v: number, dirs: [string, string]) => {
     const abs = Math.abs(v).toFixed(4);
@@ -772,6 +774,8 @@ function TopBar({
 
   return (
     <div className="sentinel-topbar" style={{ left: sidebarWidth, flexWrap: "nowrap", overflow: "hidden" }}>
+      {/* Mobile hamburger */}
+      <button className="mobile-menu-btn" onClick={onMenuToggle} aria-label="Toggle menu">&#9776;</button>
       {/* Live indicator */}
       <div style={{ display: "flex", alignItems: "center", gap: "6px", marginRight: "4px" }}>
         <div className="live-dot" />
@@ -1259,6 +1263,7 @@ export default function ThreatMap() {
   const [liveEvents, setLiveEvents]         = useState<CyberEvent[]>([]);
   const [bustKey, setBustKey]               = useState(0);
   const [isRefreshing, setIsRefreshing]     = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const mapRef = useRef<L.Map | null>(null);
 
   const sidebarWidth = sidebarCollapsed ? 48 : 260;
@@ -1346,6 +1351,7 @@ export default function ThreatMap() {
 
   const handleSelectEvent = useCallback((ev: CyberEvent) => {
     setSelectedEvent(ev);
+    setMobileSidebarOpen(false);
   }, []);
 
   const handleZoom = useCallback((delta: 1 | -1) => {
@@ -1466,6 +1472,14 @@ export default function ThreatMap() {
       {/* Subtle scanlines for depth */}
       <div className="sentinel-scanlines" />
 
+      {/* Mobile sidebar backdrop */}
+      {mobileSidebarOpen && (
+        <div
+          className="mobile-sidebar-backdrop"
+          onClick={() => setMobileSidebarOpen(false)}
+        />
+      )}
+
       {/* Left sidebar */}
       <Sidebar
         activeLayers={viewState.layers}
@@ -1476,6 +1490,7 @@ export default function ThreatMap() {
         onToggleCollapse={() => setSidebarCollapsed(p => !p)}
         showChoropleth={showChoropleth}
         onToggleChoropleth={() => setShowChoropleth(p => !p)}
+        mobileOpen={mobileSidebarOpen}
       />
 
       {/* Top bar */}
@@ -1493,6 +1508,7 @@ export default function ThreatMap() {
         isLoading={isLoading || isRefreshing}
         viewMode={viewMode}
         onToggleView={() => setViewMode(p => p === "arcs" ? "heatmap" : "arcs")}
+        onMenuToggle={() => setMobileSidebarOpen(s => !s)}
       />
 
       {/* Right panel — detail or list */}

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { CyberEvent } from "@shared/schema";
 import { Shield, ChevronRight, X, ExternalLink, Activity, Search, Crosshair, Download, Copy, Check } from "lucide-react";
@@ -467,6 +467,13 @@ export default function AptTracker() {
   const [search, setSearch]         = useState("");
   const [sponsor, setSponsor]        = useState<string>("ALL");
   const [selected, setSelected]      = useState<APTGroup | null>(null);
+  const [isMobile, setIsMobile]      = useState(typeof window !== 'undefined' && window.innerWidth < 768);
+
+  useEffect(() => {
+    const h = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, []);
 
   const { data: eventsRaw } = useQuery<CyberEvent[]>({
     queryKey: ["/api/events"],
@@ -664,7 +671,7 @@ export default function AptTracker() {
         <div style={{
           flex: 1, overflowY: "auto", padding: 14,
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(310px, 1fr))",
+          gridTemplateColumns: isMobile ? '1fr' : window.innerWidth < 1100 ? 'repeat(2, 1fr)' : 'repeat(auto-fill, minmax(310px, 1fr))',
           gap: 10, alignContent: "start",
         }}>
           {filtered.map(g => {
@@ -788,7 +795,11 @@ export default function AptTracker() {
 
         {/* DETAIL PANEL */}
         {selected && (
-          <div style={{
+          <div style={isMobile ? {
+            position: 'fixed' as const, inset: 0, zIndex: 3000,
+            background: 'rgba(4,8,16,0.98)',
+            overflowY: 'auto', display: 'flex', flexDirection: 'column' as const,
+          } : {
             width: 400, flexShrink: 0,
             background: "rgba(4,8,16,0.97)",
             borderLeft: `1px solid ${(SPONSOR_COLOR[selected.sponsor] ?? selected.color)}25`,

@@ -49,15 +49,27 @@ const INTEL_LINKS: { label: string; url: string; cat: string; color: string; des
 
 export default function OpsRoom() {
   const [panel, setPanel] = useState<Panel>("webcams");
-  const [cols, setCols] = useState<2 | 3 | 4>(3);
+  const [cols, setCols] = useState<2 | 3 | 4>(typeof window !== 'undefined' && window.innerWidth < 600 ? 2 : 3);
   const [utc, setUtc] = useState("");
   const [filterCat, setFilterCat] = useState<string | null>(null);
+  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' && window.innerWidth < 600);
 
   useEffect(() => {
     const tick = () => setUtc(new Date().toUTCString().replace(" GMT", " UTC"));
     tick();
     const t = setInterval(tick, 1000);
     return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    const h = () => {
+      const w = window.innerWidth;
+      setIsMobile(w < 600);
+      if (w < 600) setCols(2);
+    };
+    h();
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
   }, []);
 
   const panelMeta = PANELS.find(p => p.id === panel)!;
@@ -68,7 +80,7 @@ export default function OpsRoom() {
     <div style={{ width: "100vw", height: "100vh", background: "#040810", display: "flex", flexDirection: "column", fontFamily: "'Rajdhani', sans-serif", overflow: "hidden" }}>
 
       {/* ─── HEADER ─── */}
-      <header style={{ height: 48, background: "rgba(4,8,16,0.98)", borderBottom: "1px solid rgba(99,179,237,0.12)", display: "flex", alignItems: "center", padding: "0 18px", gap: 14, flexShrink: 0 }}>
+      <header style={{ minHeight: 48, background: "rgba(4,8,16,0.98)", borderBottom: "1px solid rgba(99,179,237,0.12)", display: "flex", alignItems: "center", padding: "0 18px", gap: 14, flexShrink: 0, flexWrap: "wrap" }}>
         <a href="/" style={{ color: "rgba(99,179,237,0.4)", textDecoration: "none", fontSize: 10, letterSpacing: "0.14em", fontFamily: "'JetBrains Mono',monospace" }}>← SENTINEL-MAP</a>
         <div style={{ width: 1, height: 20, background: "rgba(99,179,237,0.1)" }} />
         <Activity size={14} style={{ color: "#ef4444" }} />
@@ -185,7 +197,7 @@ export default function OpsRoom() {
                 ))}
               </div>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: 8 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? '1fr' : "repeat(auto-fill,minmax(280px,1fr))", gap: 8 }}>
               {filteredLinks.map((l, i) => (
                 <a key={i} href={l.url} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "11px 14px", background: "rgba(6,11,20,0.8)", border: `1px solid ${l.color}14`, borderLeft: `3px solid ${l.color}`, borderRadius: "0 6px 6px 0", textDecoration: "none", transition: "background 0.15s" }}>
                   <div style={{ width: 6, height: 6, borderRadius: "50%", background: l.color, boxShadow: `0 0 5px ${l.color}`, flexShrink: 0, marginTop: 3, animation: "livePulse 2s ease-in-out infinite" }} />

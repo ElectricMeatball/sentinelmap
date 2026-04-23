@@ -738,3 +738,139 @@ html, body, #root {
 .threat-level-seg.seg-3.on,.threat-level-seg.seg-4.on { background: #f59e0b; box-shadow: 0 0 5px #f59e0b; }
 .threat-level-seg.seg-5.on,.threat-level-seg.seg-6.on { background: #ef4444; box-shadow: 0 0 7px #ef4444; }
 .threat-level-seg.seg-7.on { background: #dc2626; box-shadow: 0 0 10px #dc2626; }
+
+
+/* ══ MOBILE RESPONSIVENESS ═══════════════════════════════════════════ */
+
+/* Mobile menu button — hidden by default on desktop */
+.mobile-menu-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(99,179,237,0.15);
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(226,232,240,0.6);
+  cursor: pointer;
+  flex-shrink: 0;
+  font-size: 16px;
+  line-height: 1;
+}
+.mobile-menu-btn:hover {
+  background: rgba(99,179,237,0.08);
+  color: #63b3ed;
+}
+
+/* Mobile sidebar backdrop — hidden by default */
+.mobile-sidebar-backdrop {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  /* Hide scanline overlay on mobile for performance */
+  .scanline-overlay { display: none; }
+
+  /* Compact topbar */
+  .sentinel-topbar {
+    height: 44px;
+    padding: 0 8px;
+    gap: 6px;
+  }
+  .sentinel-topbar-brand {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+  }
+  .topbar-stat { display: none; }
+
+  /* Sidebar — hidden by default on mobile, slide-in on toggle */
+  .sentinel-sidebar {
+    position: absolute !important;
+    left: -280px;
+    top: 0;
+    bottom: 0;
+    z-index: 2000;
+    transition: left 0.25s ease !important;
+    width: 260px !important;
+    border-right: 1px solid rgba(99,179,237,0.15);
+    box-shadow: 4px 0 24px rgba(0,0,0,0.6);
+  }
+  .sentinel-sidebar.mobile-open {
+    left: 0;
+  }
+
+  /* Mobile sidebar overlay backdrop */
+  .mobile-sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 1999;
+    backdrop-filter: blur(2px);
+  }
+
+  /* Mobile hamburger button — show on mobile */
+  .mobile-menu-btn {
+    display: flex !important;
+  }
+
+  /* Time range pills — compact */
+  .time-pill {
+    padding: 3px 7px !important;
+    font-size: 8px !important;
+  }
+
+  /* Map — full width when sidebar hidden */
+  .sentinel-map-container {
+    left: 0 !important;
+    width: 100% !important;
+  }
+
+  /* Event detail panel — slide up from bottom on mobile */
+  .event-detail-panel {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    top: auto !important;
+    width: 100% !important;
+    max-height: 65vh;
+    border-radius: 16px 16px 0 0;
+    border-top: 1px solid rgba(99,179,237,0.2);
+    border-right: none;
+    border-left: none;
+    z-index: 2100;
+    overflow-y: auto;
+  }
+
+  /* HUD corners — hidden on mobile */
+  .hud-corner { display: none; }
+
+  /* Threat ticker — smaller text */
+  .threat-ticker { height: 26px; }
+  .threat-ticker-label { font-size: 8px; padding: 0 8px; }
+  .threat-ticker-item { font-size: 8px; }
+
+  /* Threat level bar — move to bottom right on mobile */
+  .threat-level-bar {
+    top: auto;
+    bottom: 34px;
+    right: 6px;
+  }
+
+  /* Map vignette — less intense on mobile */
+  .map-vignette {
+    background: radial-gradient(ellipse 100% 80% at 50% 50%, transparent 40%, rgba(4,8,20,0.4) 100%);
+  }
+}
+
+@media (max-width: 480px) {
+  .sentinel-topbar-brand {
+    font-size: 9px;
+  }
+  .time-pill {
+    padding: 2px 5px !important;
+    font-size: 7px !important;
+  }
+}
