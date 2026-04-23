@@ -6,12 +6,14 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import ThreatMapPage from "@/pages/threat-map";
 import OpsRoom from "@/pages/ops-room";
+import APTTracker from "@/pages/apt-tracker";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={ThreatMapPage} />
       <Route path="/ops-room" component={OpsRoom} />
+      <Route path="/apt-tracker" component={APTTracker} />
       <Route component={NotFound} />
     </Switch>
   );

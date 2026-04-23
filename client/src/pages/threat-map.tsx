@@ -874,6 +874,26 @@ function TopBar({
         }}>
           <Monitor size={12} /> OPS ROOM
         </a>
+        {/* APT TRACKER link */}
+        <a href="/apt-tracker" style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "5px",
+          padding: "5px 12px",
+          background: "rgba(56,189,248,0.08)",
+          border: "1px solid rgba(56,189,248,0.2)",
+          borderRadius: "6px",
+          color: "#38bdf8",
+          textDecoration: "none",
+          fontSize: "10px",
+          fontWeight: 800,
+          letterSpacing: "0.12em",
+          textTransform: "uppercase",
+          fontFamily: "'Rajdhani', sans-serif",
+          whiteSpace: "nowrap",
+        }}>
+          <Shield size={12} /> APT TRACKER
+        </a>
       </div>
     </div>
   );
