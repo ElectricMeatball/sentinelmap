@@ -324,6 +324,29 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
+// ─── Layer-specific SVG marker icons ──────────────────────────────────────
+function getLayerIcon(layer: string, color: string, size: number, isSelected: boolean): L.DivIcon {
+  const s = isSelected ? size * 2 : size;
+  const shapes: Record<string, string> = {
+    malware:    `<svg viewBox="0 0 20 20" fill="${color}" xmlns="http://www.w3.org/2000/svg"><circle cx="10" cy="10" r="3"/><line x1="10" y1="1" x2="10" y2="5" stroke="${color}" stroke-width="1.5"/><line x1="10" y1="15" x2="10" y2="19" stroke="${color}" stroke-width="1.5"/><line x1="1" y1="10" x2="5" y2="10" stroke="${color}" stroke-width="1.5"/><line x1="15" y1="10" x2="19" y2="10" stroke="${color}" stroke-width="1.5"/></svg>`,
+    ransomware: `<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="5" y="9" width="10" height="9" rx="1.5" fill="${color}" opacity="0.9"/><path d="M7 9V6.5a3 3 0 0 1 6 0V9" stroke="${color}" stroke-width="1.8" fill="none"/><rect x="9" y="12" width="2" height="3" rx="1" fill="#040810"/></svg>`,
+    phishing:   `<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 2 L18 8 L18 17 L2 17 L2 8 Z" stroke="${color}" stroke-width="1.5" fill="${color}22"/><path d="M2 8 L10 13 L18 8" stroke="${color}" stroke-width="1.5"/></svg>`,
+    c2:         `<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="10" y1="18" x2="10" y2="10" stroke="${color}" stroke-width="2"/><line x1="6" y1="18" x2="10" y2="18" stroke="${color}" stroke-width="2"/><line x1="14" y1="18" x2="10" y2="18" stroke="${color}" stroke-width="2"/><path d="M5 8 Q10 2 15 8" stroke="${color}" stroke-width="1.5" fill="none"/><circle cx="10" cy="10" r="1.5" fill="${color}"/></svg>`,
+    exploit:    `<svg viewBox="0 0 20 20" fill="${color}" xmlns="http://www.w3.org/2000/svg"><polygon points="10,1 13,8 20,8 14,13 16,20 10,15 4,20 6,13 0,8 7,8" fill="${color}" opacity="0.9"/></svg>`,
+    botnet:     `<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="10" cy="10" r="3" fill="${color}"/><circle cx="3" cy="5" r="2" stroke="${color}" stroke-width="1.2"/><circle cx="17" cy="5" r="2" stroke="${color}" stroke-width="1.2"/><circle cx="3" cy="15" r="2" stroke="${color}" stroke-width="1.2"/><circle cx="17" cy="15" r="2" stroke="${color}" stroke-width="1.2"/><line x1="5" y1="6" x2="8" y2="9" stroke="${color}" stroke-width="1"/><line x1="15" y1="6" x2="12" y2="9" stroke="${color}" stroke-width="1"/><line x1="5" y1="14" x2="8" y2="11" stroke="${color}" stroke-width="1"/><line x1="15" y1="14" x2="12" y2="11" stroke="${color}" stroke-width="1"/></svg>`,
+    bruteforce: `<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="10" cy="10" r="8" stroke="${color}" stroke-width="1.2" stroke-dasharray="2 2"/><circle cx="10" cy="10" r="4" stroke="${color}" stroke-width="1.2"/><line x1="10" y1="10" x2="17" y2="5" stroke="${color}" stroke-width="1.8" opacity="0.9"/><circle cx="10" cy="10" r="1.5" fill="${color}"/></svg>`,
+    ddos:       `<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 14 Q5 6 10 10 Q15 14 19 6" stroke="${color}" stroke-width="2" fill="none"/><path d="M1 17 Q5 9 10 13 Q15 17 19 9" stroke="${color}" stroke-width="1.2" fill="none" opacity="0.5"/></svg>`,
+    spam:       `<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="5" width="16" height="12" rx="2" stroke="${color}" stroke-width="1.5" fill="${color}15"/><path d="M2 7 L10 12 L18 7" stroke="${color}" stroke-width="1.3"/><line x1="5" y1="2" x2="5" y2="5" stroke="${color}" stroke-width="1.5"/><line x1="10" y1="1" x2="10" y2="5" stroke="${color}" stroke-width="1.5"/><line x1="15" y1="2" x2="15" y2="5" stroke="${color}" stroke-width="1.5"/></svg>`,
+  };
+  const svgContent = shapes[layer] || shapes.malware;
+  return L.divIcon({
+    className: '',
+    html: `<div style="width:${s}px;height:${s}px;filter:drop-shadow(0 0 ${Math.round(s/2)}px ${color}99);opacity:${isSelected ? 1 : 0.85};">${svgContent}</div>`,
+    iconSize: [s, s],
+    iconAnchor: [s/2, s/2],
+  });
+}
+
 // ─── Map event markers ─────────────────────────────────────────────────────
 function MapMarkers({ events, activeLayers, onSelect, selectedId }: {
   events: CyberEvent[];
@@ -380,22 +403,7 @@ function MapMarkers({ events, activeLayers, onSelect, selectedId }: {
       const size  = 6 + Math.round((ev.priorityScore / 100) * 8);
       const isSelected = ev.id === selectedId;
 
-      const icon = L.divIcon({
-        className: "",
-        html: `
-          <div style="
-            width:${isSelected ? size * 2 : size}px;
-            height:${isSelected ? size * 2 : size}px;
-            border-radius:50%;
-            background:${hexToRgba(color, 0.25)};
-            border:1.5px solid ${color};
-            box-shadow:0 0 ${isSelected ? 16 : 8}px ${color}, 0 0 3px ${color} inset;
-            cursor:pointer;
-            transition:all 0.15s;
-          "></div>`,
-        iconSize:   [isSelected ? size * 2 : size, isSelected ? size * 2 : size],
-        iconAnchor: [isSelected ? size : size / 2, isSelected ? size : size / 2],
-      });
+      const icon = getLayerIcon(ev.layer, color, size, isSelected);
 
       const marker = L.marker([ev.srcLat, ev.srcLon], { icon, zIndexOffset: isSelected ? 1000 : 0 })
         .on("click", () => onSelect(ev));
@@ -776,6 +784,58 @@ function Sidebar({
   );
 }
 
+// ─── Refresh countdown ring ────────────────────────────────────────────────
+function RefreshCountdown({ intervalMs }: { intervalMs: number }) {
+  const [remaining, setRemaining] = useState(intervalMs);
+  const startRef = useRef(Date.now());
+  const radius = 8;
+  const circ = 2 * Math.PI * radius;
+
+  useEffect(() => {
+    startRef.current = Date.now();
+    setRemaining(intervalMs);
+  }, [intervalMs]);
+
+  useEffect(() => {
+    const t = setInterval(() => {
+      const elapsed = Date.now() - startRef.current;
+      const rem = Math.max(0, intervalMs - elapsed);
+      setRemaining(rem);
+      if (rem === 0) startRef.current = Date.now();
+    }, 500);
+    return () => clearInterval(t);
+  }, [intervalMs]);
+
+  const progress = remaining / intervalMs;
+  const dashOffset = circ * (1 - progress);
+  const secs = Math.ceil(remaining / 1000);
+  const isUrgent = secs <= 15;
+
+  return (
+    <div title={`Next refresh in ${secs}s`} style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+      <svg width="22" height="22" style={{ transform: 'rotate(-90deg)' }}>
+        <circle cx="11" cy="11" r={radius} fill="none" stroke="rgba(99,179,237,0.08)" strokeWidth="2"/>
+        <circle
+          cx="11" cy="11" r={radius}
+          fill="none"
+          stroke={isUrgent ? '#38bdf8' : 'rgba(99,179,237,0.35)'}
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeDasharray={`${circ}`}
+          strokeDashoffset={dashOffset}
+          style={{ transition: 'stroke-dashoffset 0.5s linear, stroke 0.3s' }}
+        />
+      </svg>
+      <span style={{
+        fontFamily: "'JetBrains Mono', monospace",
+        fontSize: 8,
+        color: isUrgent ? '#38bdf8' : 'rgba(99,179,237,0.3)',
+        minWidth: 18, letterSpacing: '0.05em', transition: 'color 0.3s',
+      }}>{secs}s</span>
+    </div>
+  );
+}
+
 // ─── Top bar ──────────────────────────────────────────────────────────────
 function TopBar({
   lat, lon, zoom, timeRange, onTimeRange, search, onSearch, totalEvents, sidebarWidth,
@@ -870,6 +930,7 @@ function TopBar({
           {viewMode === "arcs" ? "ARCS" : "HEATMAP"}
         </button>
 
+        <RefreshCountdown intervalMs={2 * 60 * 1000} />
         {/* Refresh */}
         <button
           onClick={onRefresh}
@@ -1453,18 +1514,20 @@ export default function ThreatMap() {
         attributionControl={true}
         ref={(m: any) => { if (m) mapRef.current = m; }}
       >
-        {/* ESRI Dark Gray Base — English labels, Palantir aesthetic, free, no API key */}
+        {/* CartoDB Dark Matter — free, no key, cool blue-dark aesthetic */}
         <TileLayer
-          url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
-          attribution="Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ"
-          maxZoom={16}
+          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+          attribution="&copy; CartoDB"
+          subdomains="abcd"
+          maxZoom={19}
+          opacity={1}
         />
-        {/* ESRI Dark Gray Reference — English-only text labels on transparent background */}
+        {/* ESRI reference overlay — English labels on transparent background */}
         <TileLayer
-          url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}"
+          url="https://services.arcgisonline.com/arcgis/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
           attribution=""
-          maxZoom={16}
-          pane="shadowPane"
+          maxZoom={18}
+          opacity={0.5}
         />
 
         {/* Map event sync */}
