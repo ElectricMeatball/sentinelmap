@@ -333,6 +333,7 @@ function MapMarkers({ events, activeLayers, onSelect, selectedId }: {
 }) {
   const map = useMap();
   const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set());
+  const markerAddedAt = useRef<Map<string, number>>(new Map());
 
   // Stagger marker appearance using displayDelayMs
   useEffect(() => {
@@ -340,12 +341,34 @@ function MapMarkers({ events, activeLayers, onSelect, selectedId }: {
     events.forEach(ev => {
       const delay = (ev as any).displayDelayMs || 0;
       const t = setTimeout(() => {
+        const now = Date.now();
+        markerAddedAt.current.set(ev.id, now);
         setVisibleIds(prev => new Set(Array.from(prev).concat(ev.id)));
       }, delay);
       timers.push(t);
     });
     return () => timers.forEach(clearTimeout);
   }, [events]);
+
+  // Expire markers older than 60 seconds
+  useEffect(() => {
+    const cleanup = setInterval(() => {
+      const now = Date.now();
+      const expiredIds: string[] = [];
+      markerAddedAt.current.forEach((addedAt, id) => {
+        if (now - addedAt > 60000) expiredIds.push(id);
+      });
+      if (expiredIds.length > 0) {
+        expiredIds.forEach(id => markerAddedAt.current.delete(id));
+        setVisibleIds(prev => {
+          const next = new Set(Array.from(prev));
+          expiredIds.forEach(id => next.delete(id));
+          return next;
+        });
+      }
+    }, 5000);
+    return () => clearInterval(cleanup);
+  }, []);
 
   useEffect(() => {
     const markers: L.Marker[] = [];
