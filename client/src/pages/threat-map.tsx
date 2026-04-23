@@ -1195,16 +1195,26 @@ function EventListPanel({ events, activeLayers, onSelect, sidebarWidth, liveEven
     return [...live, ...rest].slice(0, 100);
   }, [events, activeLayers, liveEvents]);
 
+  const [minimized, setMinimized] = useState(false);
+
   return (
     <div
       className="sentinel-panel"
-      style={{ right: 0, top: 52, bottom: 36, width: "300px", backdropFilter: "blur(8px)" }}
+      style={{ right: 0, top: 52, bottom: minimized ? 'auto' : 36, width: "300px", backdropFilter: "blur(8px)" }}
     >
       <div className="section-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingRight: "14px" }}>
         <span>Recent Events</span>
-        <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: "11px", color: "rgba(226,232,240,0.5)", fontVariantNumeric: "tabular-nums" }}>{filtered.length}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: "11px", color: "rgba(226,232,240,0.5)", fontVariantNumeric: "tabular-nums" }}>{filtered.length}</span>
+          <button
+            onClick={() => setMinimized(m => !m)}
+            className="mobile-minimize-btn"
+            title={minimized ? 'Expand events' : 'Minimise events'}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, borderRadius: 4, border: '1px solid rgba(99,179,237,0.15)', background: 'transparent', color: 'rgba(226,232,240,0.4)', cursor: 'pointer', fontSize: 12, flexShrink: 0 }}
+          >{minimized ? '▲' : '▼'}</button>
+        </div>
       </div>
-      {filtered.map(ev => {
+      {!minimized && filtered.map(ev => {
         const meta  = LAYER_META[ev.layer];
         const color = meta.color;
         const Icon  = LAYER_ICONS[ev.layer];
