@@ -60,13 +60,36 @@ async function fetchWithRetry(url: string, options: RequestInit = {}, ms = 10000
   throw new Error('Max retries reached');
 }
 
-async function geolocateBatch(ips: string[], max = 20) {
-  const toResolve = ips.filter(ip => !geoCache.has(ip)).slice(0, max);
-  await Promise.all(
-    toResolve.map((ip, i) =>
-      new Promise<void>(r => setTimeout(r, i * 50)).then(() => geolocateIP(ip))
-    )
-  );
+async function geolocateBatch(ips: string[], maxNew = 100): Promise<void> {
+  const toResolve = ips.filter(ip => ip && !geoCache.has(ip));
+  if (toResolve.length === 0) return;
+  const unique = Array.from(new Set(toResolve)).slice(0, maxNew);
+  for (let i = 0; i < unique.length; i += 100) {
+    const chunk = unique.slice(i, i + 100);
+    try {
+      const resp = await fetchWithTimeout('http://ip-api.com/batch?fields=status,country,city,lat,lon,query,org,as', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(chunk.map(ip => ({ query: ip }))),
+      }, 15000);
+      const results = await resp.json() as any[];
+      for (const r of results) {
+        if (r.status === 'success') {
+          geoCache.set(r.query, {
+            ip: r.query, lat: r.lat, lon: r.lon,
+            country: r.country || 'Unknown', city: r.city || '',
+            org: r.org || '', asn: r.as || '',
+          });
+        }
+      }
+      if (i + 100 < unique.length) await new Promise(r => setTimeout(r, 4200));
+    } catch (e) {
+      for (const ip of chunk.slice(0, 10)) {
+        await geolocateIP(ip);
+        await new Promise(r => setTimeout(r, 200));
+      }
+    }
+  }
 }
 
 // ─── Known targets (victim geographies) ───────────────────────────────────
@@ -189,7 +212,7 @@ async function fetchBlocklist() {
   try {
     const r = await fetchWithTimeout("https://lists.blocklist.de/lists/all.txt");
     const text = await r.text();
-    const ips = text.split("\n").filter(l => l.trim() && !l.startsWith("#")).slice(0, 20);
+    const ips = text.split("\n").filter(l => l.trim() && !l.startsWith("#")).slice(0, 40);
     if (ips.length) {
       setCached("blocklist", ips);
       feedStatuses.blocklist.status = "live";
@@ -210,7 +233,7 @@ async function fetchSANS() {
     });
     const d = await r.json() as any[];
     if (Array.isArray(d) && d.length) {
-      const data = d.slice(0, 20);
+      const data = d.slice(0, 60);
       setCached("sans", data);
       feedStatuses.sans.status = "live";
       feedStatuses.sans.lastUpdated = Date.now();
@@ -225,11 +248,11 @@ async function fetchSSLBL() {
   const hit = cached<any>("sslbl");
   if (hit) return hit;
   try {
-    const r = await fetchWithRetry("https://sslbl.abuse.ch/blacklist/sslipblacklist.json");
+    const r = await fetchWithRetry("https://sslbl.abuse.ch/blacklist/sslipblacklist_aggressive.json");
     const d = await r.json() as any;
     const arr = Array.isArray(d) ? d : (d.blacklist || []);
     if (arr.length) {
-      const data = arr.slice(0, 50);
+      const data = arr.slice(0, 60);
       setCached("sslbl", data);
       feedStatuses.sslbl.status = "live";
       feedStatuses.sslbl.lastUpdated = Date.now();
@@ -246,7 +269,7 @@ async function fetchCinsscore() {
   try {
     const r = await fetchWithTimeout("http://cinsscore.com/list/ci-badguys.txt");
     const text = await r.text();
-    const ips = text.split("\n").filter(l => l.trim() && !l.startsWith("#")).slice(0, 20);
+    const ips = text.split("\n").filter(l => l.trim() && !l.startsWith("#")).slice(0, 50);
     if (ips.length) {
       setCached("cinsscore", ips);
       feedStatuses.cinsscore.status = "live";
@@ -269,8 +292,8 @@ async function fetchIPsum() {
       if (line.startsWith("#") || !line.trim()) continue;
       const [ip, scoreStr] = line.split("\t");
       const score = parseInt(scoreStr, 10);
-      if (ip && score >= 3) entries.push({ ip: ip.trim(), score });
-      if (entries.length >= 40) break;
+      if (ip && score >= 2) entries.push({ ip: ip.trim(), score });
+      if (entries.length >= 60) break;
     }
     if (entries.length) {
       setCached("ipsum", entries);
@@ -289,7 +312,7 @@ async function fetchEmergingThreats() {
   try {
     const r = await fetchWithTimeout("https://rules.emergingthreats.net/blockrules/compromised-ips.txt");
     const text = await r.text();
-    const ips = text.split("\n").filter(l => l.trim() && !l.startsWith("#")).slice(0, 20);
+    const ips = text.split("\n").filter(l => l.trim() && !l.startsWith("#")).slice(0, 60);
     if (ips.length) {
       setCached("emergingthreats", ips);
       feedStatuses.emergingthreats.status = "live";
@@ -312,7 +335,7 @@ async function fetchSpamhaus() {
       if (line.startsWith(";") || !line.trim()) continue;
       const ip = line.split(";")[0].trim().split("/")[0].trim();
       if (/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) ips.push(ip);
-      if (ips.length >= 15) break;
+      if (ips.length >= 50) break;
     }
     if (ips.length) {
       setCached("spamhaus", ips);
@@ -337,7 +360,7 @@ async function fetchDataPlane() {
       const parts = line.split("|").map(p => p.trim());
       const ip = parts.length >= 3 ? parts[2] : parts[0];
       if (/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) ips.push(ip);
-      if (ips.length >= 15) break;
+      if (ips.length >= 50) break;
     }
     if (ips.length) {
       setCached("dataplane", ips);
@@ -354,8 +377,13 @@ async function fetchTurris() {
   const hit = cached<{ ip: string; tags: string }>("turris");
   if (hit) return hit;
   try {
-    const r = await fetchWithTimeout("https://view.sentinel.turris.cz/greylist-data/greylist-latest.csv");
-    const text = await r.text();
+    let turrisResp: Response;
+    try {
+      turrisResp = await fetchWithTimeout("https://view.sentinel.turris.cz/greylist-data/greylist-latest.csv");
+    } catch {
+      turrisResp = await fetchWithTimeout("https://raw.githubusercontent.com/turris-cz/sentinel-greylist/master/greylist.csv");
+    }
+    const text = await turrisResp.text();
     const entries: { ip: string; tags: string }[] = [];
     for (const line of text.split("\n")) {
       if (line.startsWith("#") || !line.trim()) continue;
@@ -363,7 +391,7 @@ async function fetchTurris() {
       const ip = parts[0]?.trim();
       if (/^\d{1,3}(\.\d{1,3}){3}$/.test(ip))
         entries.push({ ip, tags: parts[1]?.trim() || "" });
-      if (entries.length >= 30) break;
+      if (entries.length >= 50) break;
     }
     if (entries.length) {
       setCached("turris", entries);
@@ -380,6 +408,20 @@ async function fetchTurris() {
 let cachedEvents: CyberEvent[] = [];
 let lastFetchTime = 0;
 const EVENT_CACHE_TTL = 24 * 60 * 60 * 1000;
+
+// ─── Background 24h refresh ────────────────────────────────────────────────
+const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+
+function scheduleRefresh() {
+  setTimeout(async () => {
+    console.log('[SentinelMap] 24h cache refresh triggered');
+    Object.keys(caches).forEach(k => delete caches[k]);
+    cachedEvents = [];
+    lastFetchTime = 0;
+    buildEvents().catch(e => console.error('[SentinelMap] Background refresh error:', e));
+    scheduleRefresh();
+  }, TWENTY_FOUR_HOURS);
+}
 
 async function buildEvents(): Promise<CyberEvent[]> {
   const now = Date.now();
@@ -426,10 +468,10 @@ async function buildEvents(): Promise<CyberEvent[]> {
   if (tfRaw?.query_status === "ok" && Array.isArray(tfRaw.data)) {
     feedStatuses.threatfox.status = "live";
     feedStatuses.threatfox.lastUpdated = now;
-    const iocs = tfRaw.data.slice(0, 30);
+    const iocs = tfRaw.data.slice(0, 80);
     feedStatuses.threatfox.count = iocs.length;
     const ips = iocs.map((x: any) => extractIP(x.ioc || "")).filter(Boolean) as string[];
-    await geolocateBatch(ips, 15);
+    await geolocateBatch(ips, 100);
     for (const ioc of iocs) {
       const ip = extractIP(ioc.ioc || "");
       const geo = ip ? geoCache.get(ip) : null;
@@ -470,8 +512,8 @@ async function buildEvents(): Promise<CyberEvent[]> {
   const urlhausIPs = urlhausData
     .map((u: any) => extractIP((u.url || "").replace(/^https?:\/\//, "").split(/[/:]/)[0]))
     .filter(Boolean) as string[];
-  await geolocateBatch(urlhausIPs, 20);
-  for (const url of urlhausData.slice(0, 20)) {
+  await geolocateBatch(urlhausIPs, 100);
+  for (const url of urlhausData.slice(0, 60)) {
     const host = (url.url || "").replace(/^https?:\/\//, "").split(/[/:]/)[0];
     const ip = extractIP(host);
     const geo = ip ? geoCache.get(ip) : null;
@@ -507,8 +549,8 @@ async function buildEvents(): Promise<CyberEvent[]> {
 
   // ── Feodo Tracker (C2) ──
   const feodoIPs = feodoData.map((e: any) => e.ip_address || e.dst_ip || "").filter(Boolean) as string[];
-  await geolocateBatch(feodoIPs, 20);
-  for (const entry of feodoData.slice(0, 15)) {
+  await geolocateBatch(feodoIPs, 100);
+  for (const entry of feodoData.slice(0, 50)) {
     const ip = entry.ip_address || entry.dst_ip || "";
     const geo = ip ? geoCache.get(ip) : null;
     if (!geo) continue;
@@ -540,8 +582,8 @@ async function buildEvents(): Promise<CyberEvent[]> {
   }
 
   // ── Blocklist.de (Brute Force) ──
-  await geolocateBatch(blocklistIPs.slice(0, 8), 8);
-  for (const ip of blocklistIPs.slice(0, 8)) {
+  await geolocateBatch(blocklistIPs.slice(0, 40), 40);
+  for (const ip of blocklistIPs.slice(0, 40)) {
     const geo = geoCache.get(ip);
     if (!geo) continue;
     const target = pickTarget();
@@ -572,8 +614,8 @@ async function buildEvents(): Promise<CyberEvent[]> {
 
   // ── SANS ISC (Exploit/Scanning) ──
   const sansIPs = sansData.map((e: any) => e.ip).filter(Boolean) as string[];
-  await geolocateBatch(sansIPs.slice(0, 15), 15);
-  for (const entry of sansData.slice(0, 15)) {
+  await geolocateBatch(sansIPs.slice(0, 60), 60);
+  for (const entry of sansData.slice(0, 60)) {
     const ip = entry.ip || "";
     const geo = ip ? geoCache.get(ip) : null;
     if (!geo) continue;
@@ -605,8 +647,8 @@ async function buildEvents(): Promise<CyberEvent[]> {
 
   // ── SSL Blacklist (Malware/C2) ──
   const sslblIPs = sslblData.map((e: any) => e.ip_address || e.ip).filter(Boolean) as string[];
-  await geolocateBatch(sslblIPs.slice(0, 12), 12);
-  for (const entry of sslblData.slice(0, 12)) {
+  await geolocateBatch(sslblIPs.slice(0, 60), 60);
+  for (const entry of sslblData.slice(0, 60)) {
     const ip = entry.ip_address || entry.ip || "";
     const geo = ip ? geoCache.get(ip) : null;
     if (!geo) continue;
@@ -640,13 +682,13 @@ async function buildEvents(): Promise<CyberEvent[]> {
   }
 
   // ── Cinsscore (DDoS/Exploit/Ransomware) ──
-  await geolocateBatch(cinsscoreIPs.slice(0, 12), 12);
+  await geolocateBatch(cinsscoreIPs.slice(0, 50), 50);
   const cinsCats: Array<{ layer: LayerType; malware: string; technique: string }> = [
     { layer: "ddos",       malware: "DDoS Source",                technique: "T1498" },
     { layer: "exploit",    malware: "Vulnerability Scanner",      technique: "T1595.002" },
     { layer: "ransomware", malware: "Ransomware Infrastructure",  technique: "T1486" },
   ];
-  for (let i = 0; i < Math.min(cinsscoreIPs.length, 12); i++) {
+  for (let i = 0; i < Math.min(cinsscoreIPs.length, 50); i++) {
     const ip = cinsscoreIPs[i];
     const geo = geoCache.get(ip);
     if (!geo) continue;
@@ -679,8 +721,8 @@ async function buildEvents(): Promise<CyberEvent[]> {
 
   // ── IPsum (high-threat IPs) ──
   const ipsumIPs = ipsumData.map((e: any) => e.ip);
-  await geolocateBatch(ipsumIPs.slice(0, 12), 12);
-  for (const entry of ipsumData.slice(0, 12)) {
+  await geolocateBatch(ipsumIPs.slice(0, 60), 60);
+  for (const entry of ipsumData.slice(0, 60)) {
     const geo = geoCache.get(entry.ip);
     if (!geo) continue;
     const target = pickTarget();
@@ -711,8 +753,8 @@ async function buildEvents(): Promise<CyberEvent[]> {
   }
 
   // ── Emerging Threats (compromised hosts) ──
-  await geolocateBatch(etIPs.slice(0, 12), 12);
-  for (const ip of etIPs.slice(0, 12)) {
+  await geolocateBatch(etIPs.slice(0, 60), 60);
+  for (const ip of etIPs.slice(0, 60)) {
     const geo = geoCache.get(ip);
     if (!geo) continue;
     const target = pickTarget();
@@ -742,8 +784,8 @@ async function buildEvents(): Promise<CyberEvent[]> {
   }
 
   // ── Spamhaus DROP (spam/botnet ranges) ──
-  await geolocateBatch(spamhausIPs.slice(0, 10), 10);
-  for (const ip of spamhausIPs.slice(0, 10)) {
+  await geolocateBatch(spamhausIPs.slice(0, 50), 50);
+  for (const ip of spamhausIPs.slice(0, 50)) {
     const geo = geoCache.get(ip);
     if (!geo) continue;
     const target = pickTarget();
@@ -773,8 +815,8 @@ async function buildEvents(): Promise<CyberEvent[]> {
   }
 
   // ── DataPlane SSH (brute force) ──
-  await geolocateBatch(dataplaneIPs.slice(0, 10), 10);
-  for (const ip of dataplaneIPs.slice(0, 10)) {
+  await geolocateBatch(dataplaneIPs.slice(0, 50), 50);
+  for (const ip of dataplaneIPs.slice(0, 50)) {
     const geo = geoCache.get(ip);
     if (!geo) continue;
     const target = pickTarget();
@@ -805,8 +847,8 @@ async function buildEvents(): Promise<CyberEvent[]> {
 
   // ── Turris Greylist (botnet/scanning) ──
   const turrisIPs = turrisData.map((e: any) => e.ip);
-  await geolocateBatch(turrisIPs.slice(0, 10), 10);
-  for (const entry of turrisData.slice(0, 10)) {
+  await geolocateBatch(turrisIPs.slice(0, 50), 50);
+  for (const entry of turrisData.slice(0, 50)) {
     const geo = geoCache.get(entry.ip);
     if (!geo) continue;
     const tags = (entry.tags || "").toLowerCase();
@@ -913,7 +955,7 @@ async function buildEvents(): Promise<CyberEvent[]> {
   // ── AlienVault OTX (key-optional) ──
   const otxData = await fetchOTX();
   const otxIPs = otxData.map((e: any) => e.ip).filter(Boolean) as string[];
-  await geolocateBatch(otxIPs, 15);
+  await geolocateBatch(otxIPs, 100);
   for (const ind of otxData.slice(0, 20)) {
     const geo = geoCache.get(ind.ip);
     if (!geo) continue;
@@ -1242,18 +1284,17 @@ export async function registerRoutes(httpServer: any, app: Express): Promise<Ser
 
   app.get("/api/threats/stats", async (_req, res) => {
     try {
-      const events = await buildEvents();
-      const byLayer: Record<string, number> = {};
-      const byCountry: Record<string, number> = {};
-      for (const e of events) {
-        byLayer[e.layer] = (byLayer[e.layer] || 0) + 1;
-        byCountry[e.srcCountry] = (byCountry[e.srcCountry] || 0) + 1;
-      }
-      const topCountries = Object.entries(byCountry)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 10)
-        .map(([country, count]) => ({ country, count }));
-      res.json({ total: events.length, byLayer, topCountries });
+      const statuses = Object.values(feedStatuses);
+      res.json({
+        totalEvents: cachedEvents.length,
+        feedsLive: statuses.filter(f => f.status === "live").length,
+        feedsOffline: statuses.filter(f => f.status === "offline").length,
+        lastFetch: lastFetchTime,
+        cacheAge: lastFetchTime ? Math.round((Date.now() - lastFetchTime) / 1000 / 60) + 'm' : 'never',
+        nextRefreshIn: lastFetchTime ? Math.round((TWENTY_FOUR_HOURS - (Date.now() - lastFetchTime)) / 1000 / 60) + 'm' : 'immediate',
+        feeds: feedStatuses,
+        geoCache: geoCache.size,
+      });
     } catch (err) {
       res.status(500).json({ error: "Stats error" });
     }
@@ -1291,6 +1332,10 @@ export async function registerRoutes(httpServer: any, app: Express): Promise<Ser
       lastFetch: lastFetchTime,
     });
   });
+
+  // Start background 24h refresh cycle
+  scheduleRefresh();
+  console.log('[SentinelMap] 24h cache refresh scheduled');
 
   return httpServer;
 }
