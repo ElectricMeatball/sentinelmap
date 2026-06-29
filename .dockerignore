@@ -1,0 +1,16 @@
+node_modules
+dist
+.DS_Store
+server/public
+vite.config.ts.*
+*.tar.gz
+
+# Environment — never commit secrets
+.env
+
+# Logs
+*.log
+aeroguard.pid
+
+# OS
+Thumbs.db
